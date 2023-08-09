@@ -1,0 +1,8 @@
+.vscode-ctags
+.bldms*
+bldms.*
+!bldms.c
+Module.symvers
+modules.order
+.Module.symvers.cmd
+.modules.order.cmd
