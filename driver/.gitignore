@@ -1,0 +1,8 @@
+.bldms*
+bldms.*
+!bldms.c
+!bldms.h
+Module.symvers
+modules.order
+.Module.symvers.cmd
+.modules.order.cmd
