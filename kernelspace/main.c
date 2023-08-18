@@ -1,8 +1,6 @@
 #define __KERNEL__
 #define MODULE
 
-//#define DEBUG
-
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/printk.h>
