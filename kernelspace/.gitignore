@@ -1,3 +1,4 @@
+**/*.o*
 .bldms*
 bldms.*
 !bldms.c

@@ -1,5 +1,5 @@
-#include "vfs_supported.h"
-#include "device.h"
+#include "driver/ops/vfs_supported.h"
+#include "device/device.h"
 
 static int bldms_modify_device_user_count(struct bldms_device *dev, int howmany)
 {

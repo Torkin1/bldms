@@ -8,9 +8,8 @@
 #include <linux/printk.h>
 #include <linux/string.h>
 
-#include "device.h"
-#include "driver.h"
-#include "vfs_supported.h"
+#include "device/device.h"
+#include "driver/driver.h"
 
 MODULE_AUTHOR("Torkin");
 MODULE_DESCRIPTION("Block-level data management service ");

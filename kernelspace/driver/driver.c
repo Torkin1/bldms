@@ -1,8 +1,8 @@
 #include <linux/genhd.h>
 
-#include "driver.h"
-#include "device.h"
-#include "vfs_supported.h"
+#include "driver/driver.h"
+#include "driver/ops/vfs_supported.h"
+#include "driver/ops/request.h"
 
 /**
  * Gets a Major number selected by the kernel

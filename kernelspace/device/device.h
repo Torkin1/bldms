@@ -3,7 +3,7 @@
 
 #include <linux/blk-mq.h>
 
-#include "driver.h"
+#include "driver/driver.h"
 
 /**
  * Struct representing a bldms device in memory
@@ -22,7 +22,6 @@ struct bldms_device{
     struct blk_mq_tag_set tag_set;  // tag set of the device
 };
 
-blk_status_t bldms_request(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue_data *bd);
 void bldms_invalidate_device(struct bldms_device *dev);
 int bldms_init_device(struct bldms_device *dev,
  int nr_blocks, size_t block_size, size_t sector_size,
