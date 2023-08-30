@@ -21,6 +21,9 @@ void bldms_invalidate_device(struct bldms_device *dev){
     if(dev->data){
         vfree(dev->data);
     }
+    if(dev->free_blocks){
+        bldms_destroy_free_blocks_list(dev->free_blocks);
+    }
     spin_unlock(&dev->lock);
 }
 
@@ -39,6 +42,7 @@ int bldms_init_device(struct bldms_device *dev,
     dev->sector_size = sector_size;
     dev->block_size = block_size;
     dev->nr_blocks = nr_blocks;
+    dev->driver = driver;
     
     // initializes data buffer
     dev->data_size = nr_blocks * block_size;
@@ -101,9 +105,15 @@ int bldms_init_device(struct bldms_device *dev,
     dev->gd->private_data = dev;
     snprintf(dev->gd->disk_name, DISK_NAME_LEN, "%sdisk", driver->name);
     set_capacity(dev->gd, nr_blocks * (block_size / sector_size));
-    
-    dev->online = true;
 
+    // TODO: initializes lists of free blocks
+    // dev ->free_blocks = bldms_create_free_blocks_list(nr_blocks);
+
+    // set path name
+    snprintf(dev->path, 32, "/dev/%s", dev->gd->disk_name);
+    
+    // we are ready to open to the world!
+    dev->online = true;
     err = add_disk(dev->gd);
     if(err){
         pr_err("%s: add_disk failed with error code %d\n", __func__, err);

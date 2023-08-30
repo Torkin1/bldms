@@ -2,7 +2,7 @@
 
 #include "driver/driver.h"
 #include "driver/ops/vfs_supported.h"
-#include "driver/ops/request.h"
+#include "device/request.h"
 
 /**
  * Gets a Major number selected by the kernel

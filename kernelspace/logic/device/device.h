@@ -2,13 +2,17 @@
 #define DEVICE_H_INCLUDED
 
 #include <linux/blk-mq.h>
+#include <linux/rculist.h>
 
 #include "driver/driver.h"
+#include "device/block_layer.h"
 
 /**
  * Struct representing a bldms device in memory
 */
 struct bldms_device{
+    struct bldms_driver *driver; // the driver that works with the device
+    char path[32]; // path to the device
     int data_size; // size of the data in the device in bytes
     u8 *data; // the data itself
     int users; // how many users are using the device right now
@@ -20,6 +24,7 @@ struct bldms_device{
     struct request_queue *queue; // the queue of requests of read/write
     spinlock_t lock;  // lock to synchronize access to the device
     struct blk_mq_tag_set tag_set;  // tag set of the device
+    struct bldms_free_blocks_list *free_blocks; // list of free blocks
 };
 
 void bldms_invalidate_device(struct bldms_device *dev);

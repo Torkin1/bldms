@@ -8,9 +8,14 @@
 
 #include "device/device.h"
 #include "driver/driver.h"
+#include "usctm/usctm.h"
+
+#ifdef INIT_KERNELSPACE_TESTS
+#include "../test/tests.h"
+#endif
 
 MODULE_AUTHOR("Torkin");
-MODULE_DESCRIPTION("Block-level data management service ");
+MODULE_DESCRIPTION("Block-level data management service");
 MODULE_LICENSE("GPL");
 
 // TODO: move the following defines to module params
@@ -20,6 +25,7 @@ MODULE_LICENSE("GPL");
 #define BLDMS_KERNEL_SECTOR_SIZE 512
 #define BLDMS_BLOCKSIZE 4096
 #define BLDMS_NR_SECTORS_IN_BLOCK BLDMS_BLOCKSIZE / BLDMS_KERNEL_SECTOR_SIZE
+#define BLDMS_SYSCALL_DESCS_DIRNAME "syscalls"
 
 static struct bldms_driver driver;  // driver related data
 static struct bldms_device device;  // represents the device in memory
@@ -43,8 +49,29 @@ static int bldms_init(void){
         pr_err("%s: unable to initialize device\n", __func__);
         return -1;
     }
-    pr_info("%s: Initialized device /dev/%s\n", BLDMS_NAME,
-     device.gd->disk_name);
+    pr_info("%s: Initialized device %s\n", BLDMS_NAME,
+     device.path);
+    
+    // initializes syscall table manipulation system
+    if (usctm_init(BLDMS_SYSCALL_DESCS_DIRNAME)){
+        pr_err("%s: unable to initialize syscall table manipulation system\n", __func__);
+        return -1;
+    }
+    pr_info("%s: Registered syscall descriptors can be found at /sys/kernel/%s\n", BLDMS_NAME, BLDMS_SYSCALL_DESCS_DIRNAME);
+
+    /**
+     * Setups kernel space tests
+     * TODO: find a more elegant solution
+    */
+    #ifdef INIT_KERNELSPACE_TESTS
+    if (bldms_tests_init() < 0){
+        pr_err("%s: unable to initialize tests\n", __func__);
+        return -1;
+    }
+    pr_info("%s: tests initialized\n", BLDMS_NAME);
+    #endif
+
+    pr_info("%s: module load completed, all ready and set!\n", BLDMS_NAME);
     
     return 0;
 }
@@ -53,8 +80,17 @@ static void bldms_exit(void){
 
     bldms_invalidate_device(&device);
     pr_debug("%s: bldms device deleted\n", __func__);
+    
     bldms_invalidate_driver(&driver);
     pr_debug("%s: bldms driver succesfully unregistered\n", __func__);
+    
+    #ifdef INIT_KERNELSPACE_TESTS
+    bldms_tests_cleanup();
+    pr_debug("%s: test facilities cleaned up\n", __func__);
+    #endif
+    
+    usctm_cleanup();
+    pr_debug("%s: syscall table manipulation system cleaned up\n", __func__);
 
     pr_info("%s: module unload completed\n", BLDMS_NAME);
 }

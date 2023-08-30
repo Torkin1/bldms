@@ -46,3 +46,10 @@ void bldms_release(struct gendisk *disk, fmode_t mode){
         pr_err("%s: failed to release device %s\n", __func__, disk->disk_name);
     }   
 }
+
+/**
+ * There is no need to implement read() and write() functions.
+ * When read() and write() are called from VFS, the requested
+ * operations are bundled in a struct request and passed to
+ * the functions described in kernelspace/device/request.c  
+*/

@@ -1,12 +1,12 @@
 module_name=bldms
 
 obj-m += $(module_name).o
-bldms-objs += main.o driver/driver.o device/device.o driver/ops/vfs_supported.o driver/ops/request.o
+bldms-objs += logic/main.o logic/driver/driver.o logic/driver/ops/vfs_supported.o logic/device/device.o logic/device/block_layer.o logic/device/request.o logic/usctm/usctm.o logic/usctm/lib/vtpmo.o test/tests.o
 
 PWD := $(CURDIR)
 
 debug:
-	KCFLAGS="-DDEBUG -I$(PWD)" make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	KCFLAGS="-DDEBUG -DINIT_KERNELSPACE_TESTS -I$(PWD)/logic -I$(PWD)/test" make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
 clean:
 	make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) clean
