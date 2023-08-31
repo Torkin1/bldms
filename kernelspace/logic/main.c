@@ -25,7 +25,7 @@ MODULE_LICENSE("GPL");
 #define BLDMS_KERNEL_SECTOR_SIZE 512
 #define BLDMS_BLOCKSIZE 4096
 #define BLDMS_NR_SECTORS_IN_BLOCK BLDMS_BLOCKSIZE / BLDMS_KERNEL_SECTOR_SIZE
-#define BLDMS_SYSCALL_DESCS_DIRNAME "syscalls"
+#define BLDMS_SYSCALL_DESCS_DIRNAME "bldms_syscalls"
 
 static struct bldms_driver driver;  // driver related data
 static struct bldms_device device;  // represents the device in memory
