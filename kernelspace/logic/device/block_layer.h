@@ -8,7 +8,6 @@ struct bldms_block_header{
     size_t data_size;  // size of data in bytes
     size_t data_capacity; // max bytes of data that can be stored
     size_t header_size; // size of header in bytes
-    size_t size;   // size of the serialized block in bytes
     int index;  // index of the block in the device
 };
 
@@ -34,14 +33,10 @@ struct bldms_block *bldms_block_alloc(size_t block_size);
 void bldms_block_free(struct bldms_block *block);
 
 int bldms_block_memcpy(struct bldms_block *block, void *data, size_t size);
-#define bldms_block_memset(block_, value_, size_, copied_size_){\
-    copied_size_ = size_ > block_->header.data_capacity ? block_->header.data_capacity : size_; \
-    memset(block_->data, value_, copied_size_); \
-    block_->header.data_size = copied_size_; \
-}\
+int bldms_block_memset(struct bldms_block *block_, int value_, size_t size_);
 
 /**
- * Transates the block into a byte array which can be stored on disk.
+ * Translates the block into a byte array which can be stored on disk.
  * Buffer must be big enough to hold data and header sizes.
 */
 void bldms_block_serialize(struct bldms_block *block, u8 *buffer);

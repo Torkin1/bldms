@@ -3,7 +3,6 @@
 #include "usctm/usctm.h"
 #include "device/block_layer.h"
 
-static const int block_size = 4096;
 static int test_syscall_desc;
 
 /***************** test implementations*/
@@ -15,9 +14,9 @@ int test_hello(void){
 }
 
 int test_block_serialize(void){
+    const int block_size = 32;
     struct bldms_block *block_expected;
     struct bldms_block *block_actual;
-    size_t copied_size = 0;
     u8 buffer[block_size];
 
     block_expected = bldms_block_alloc(block_size);
@@ -31,12 +30,12 @@ int test_block_serialize(void){
         return -1;
     }
     bldms_block_memset(block_expected, 'a',
-     block_expected->header.data_capacity - 1, copied_size);
+     block_expected->header.data_capacity - 1);
+    
     bldms_block_serialize(block_expected, buffer);
     bldms_block_deserialize(block_actual, buffer);
 
-    if (memcmp(block_expected->data, block_actual->data,
-     block_expected->header.data_size) != 0){
+    if (strcmp(block_expected->data, block_actual->data) != 0){
         pr_err("%s: expected: %s, actual: %s\n", __func__, (char *)block_expected->data,
          (char *)block_actual->data);
         return -1;
