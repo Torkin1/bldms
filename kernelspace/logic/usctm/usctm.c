@@ -293,9 +293,6 @@ void usctm_unregister_syscall(struct usctm_syscall_tbl *syscall_tbl,
 		pr_debug("%s: unregistering syscall %s at index %d with desc %d\n",
 			__func__,registered_syscalls[i].kobj_attr.attr.name,i,
 			registered_syscalls[i].syscall_desc);
-		/**
-		 * FIXME: sysfs_remove_file crashes kernel when invoked. Don't know why lol
-		 * */
 		sysfs_remove_file(registered_syscalls_kobj, &registered_syscalls[i].kobj_attr.attr);
 		registered_syscalls[i].syscall_desc = -1;
 		registered_syscalls[i].kobj_attr.attr.name = NULL;
