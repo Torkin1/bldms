@@ -1,4 +1,3 @@
-#include <linux/blkdev.h>
 #include <linux/vmalloc.h>
 
 #include "device/device.h"
@@ -22,7 +21,7 @@ void bldms_invalidate_device(struct bldms_device *dev){
         vfree(dev->data);
     }
     if(dev->free_blocks){
-        bldms_destroy_free_blocks_list(dev->free_blocks);
+        bldms_destroy_blocks_list(dev->free_blocks);
     }
     spin_unlock(&dev->lock);
 }
@@ -106,8 +105,9 @@ int bldms_init_device(struct bldms_device *dev,
     snprintf(dev->gd->disk_name, DISK_NAME_LEN, "%sdisk", driver->name);
     set_capacity(dev->gd, nr_blocks * (block_size / sector_size));
 
-    // TODO: initializes lists of free blocks
-    // dev ->free_blocks = bldms_create_free_blocks_list(nr_blocks);
+    // initializes blocks lists
+    dev ->free_blocks = bldms_create_blocks_list(nr_blocks);
+    dev ->used_blocks = bldms_create_blocks_list(0);
 
     // set path name
     snprintf(dev->path, 32, "/dev/%s", dev->gd->disk_name);

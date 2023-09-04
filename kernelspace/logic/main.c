@@ -64,7 +64,7 @@ static int bldms_init(void){
      * TODO: find a more elegant solution
     */
     #ifdef INIT_KERNELSPACE_TESTS
-    if (bldms_tests_init() < 0){
+    if (bldms_tests_init(&device) < 0){
         pr_err("%s: unable to initialize tests\n", __func__);
         return -1;
     }

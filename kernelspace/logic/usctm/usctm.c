@@ -330,6 +330,10 @@ void usctm_unregister_all_syscalls(void){
 	}
 }
 
+/**
+ * NOTE: after calling this, userspace cannot access to
+ * syscalls anymore.
+*/
 void usctm_cleanup(void){
 
 	usctm_unregister_all_syscalls();

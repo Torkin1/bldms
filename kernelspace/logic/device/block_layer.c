@@ -1,160 +1,49 @@
-#include <linux/slab.h>
-#include <linux/rculist.h>
 #include <linux/types.h>
 
-#include "device/block_layer.h"
 #include "device/device.h"
-
-/************** Block manipulation stuff*/
-
-int bldms_block_fit_size_to_cap(struct bldms_block *block, size_t size){
-
-    int trimmed_size = 0;
-    trimmed_size = size > block->header.data_capacity ? 
-        block->header.data_capacity : size;
-    return trimmed_size;
-}
-
-int bldms_block_memcpy(struct bldms_block *block, void *data, size_t size){
-    
-    int copied_size = 0;
-        
-    copied_size = bldms_block_fit_size_to_cap(block, size);
-    memcpy(block->data, data, copied_size);
-    block->header.data_size = copied_size;
-
-    return copied_size;
-}
-
-int bldms_block_memset(struct bldms_block *block_, int value_, size_t size_){
-    int copied_size_;
-
-    copied_size_ = bldms_block_fit_size_to_cap(block_, size_);
-    memset(block_->data, value_, copied_size_); 
-    block_->header.data_size = copied_size_; 
-
-    return copied_size_;
-}
-
-/************** Block allocation stuff*/
-
-static size_t bldms_calc_block_header_size(struct bldms_block_header header){
-    return sizeof(header.data_size) + sizeof(header.header_size) + 
-        sizeof(header.index) + sizeof(header.data_capacity);
-}
-
-struct bldms_block *bldms_block_alloc(size_t block_size){
-    struct bldms_block *block;
-    block = kzalloc(sizeof(struct bldms_block), GFP_KERNEL);
-    if(!block){
-        pr_err("%s: failed to allocate block\n", __func__);
-        return NULL;
-    }
-    block->header.data_size = 0;
-    block->header.header_size = bldms_calc_block_header_size(block->header);
-    block->header.index = -1;
-    block->header.data_capacity = block_size - block->header.header_size;
-    block->data = kzalloc(block->header.data_capacity, GFP_KERNEL);
-    if(!block->data){
-        pr_err("%s: failed to allocate block data\n", __func__);
-        kfree(block);
-        return NULL;
-    }
-
-    return block;
-}
-
-void bldms_block_free(struct bldms_block *block){
-    kfree(block->data);
-    kfree(block);
-}
-
-/************** Block Serialization stuff*/
-
-void bldms_memcpy_stateful(void * dest, void * src, size_t size,
- int *offset_p)
-{
-    memcpy(dest, src, size);
-    *offset_p += size;
-}
-
-void bldms_serialize(void *dest, void *src, size_t size, int *offset_p)
-{
-    bldms_memcpy_stateful(dest + *offset_p, src, size, offset_p);
-}
-
-void bldms_deserialize(void *dest, void *src, size_t size, int *offset_p)
-{
-    bldms_memcpy_stateful(dest, src + *offset_p, size, offset_p);
-}
-
-#define bldms_block_serialize_header_field(dest_, block_, field_, offset_p_)\
-{\
-    bldms_serialize(dest_, &block_->header.field_, \
-     sizeof(block->header.field_), offset_p_); \
-}
-
-#define bldms_block_deserialize_header_field(block_, src_, field_, offset_p_)\
-{\
-    bldms_deserialize(&block_->header.field_, src_, \
-     sizeof(block->header.field_), offset_p_); \
-} 
-
-void bldms_block_serialize_header(struct bldms_block *block, u8 *buffer,
- int *offset_p)
-{
-    bldms_block_serialize_header_field(buffer, block, data_size, offset_p);
-    bldms_block_serialize_header_field(buffer, block, data_capacity, offset_p);
-    bldms_block_serialize_header_field(buffer, block, header_size, offset_p);
-    bldms_block_serialize_header_field(buffer, block, index, offset_p);
-}
-
-void bldms_block_deserialize_header(struct bldms_block *block, u8 *buffer, 
- int *offset_p)
-{
-    bldms_block_deserialize_header_field(block, buffer, data_size, offset_p);
-    bldms_block_deserialize_header_field(block, buffer, data_capacity, offset_p);
-    bldms_block_deserialize_header_field(block, buffer, header_size, offset_p);
-    bldms_block_deserialize_header_field(block, buffer, index, offset_p);
-}
-
-void bldms_block_serialize_data(struct bldms_block *block, u8 *buffer,
- int *offset_p)
-{
-    bldms_serialize(buffer, block->data,
-     block->header.data_size, offset_p);
-}
-
-void bldms_block_deserialize_data(struct bldms_block *block, u8 *buffer,
- int *offset_p)
-{
-    bldms_deserialize(block->data, buffer,
-     block->header.data_size, offset_p);
-}
-
-void bldms_block_serialize(struct bldms_block *block, u8 *buffer)
-{
-    int offset = 0;
-    bldms_block_serialize_header(block, buffer, &offset);
-    bldms_block_serialize_data(block, buffer, &offset);
-}
-
-void bldms_block_deserialize(struct bldms_block *block, u8 *buffer)
-{
-    int cursor = 0;
-    bldms_block_deserialize_header(block, buffer, &cursor);
-    bldms_block_deserialize_data(block, buffer, &cursor);
-}
+#include "device/block_serialization.h"
+#include "device/device_core.h"
 
 /************** Block layer interactions with the block device*/
+
+int bldms_reserve_block(struct bldms_device *dev, int block_index){
+    int res = 0;
+    pr_debug("%s: dev is %p\n", __func__, dev);
+    res = bldms_blocks_move_block(dev->used_blocks, dev->free_blocks, block_index);
+    if (res){
+        pr_err("%s: failed to reserve block %d\n", __func__, block_index);
+        return -1;
+    }
+    return res;
+}
+
+int bldms_release_block(struct bldms_device *dev, int block_index){
+    int res = 0;
+    res = bldms_blocks_move_block(dev->free_blocks, dev->used_blocks, block_index);
+    if (res){
+        pr_err("%s: failed to release block %d\n", __func__, block_index);
+        return -1;
+    }
+    return res;
+}
 
 /**
  * Translates a block index to a sector index in the device
 */
-static sector_t bldms_block_to_sector(struct bldms_device *dev, 
+sector_t bldms_block_to_sector(struct bldms_device *dev, 
     int block_index){
     
     return block_index * (dev->block_size / dev->sector_size);    
+}
+
+/**
+ * Translates a sector index in the device to a block index
+*/
+int bldms_sector_to_block(struct bldms_device *dev, 
+    sector_t sector_index){
+    
+    // TODO: implement
+    return -1;    
 }
 
 /** Moves one block of data*/
@@ -168,11 +57,13 @@ int bldms_move_block(struct bldms_device *dev,
     struct page *start_page;
     u8 *buffer;
     struct block_device *bdev;
+    int added_pages_len;
 
     /**
      * We need to translate the block index to a sector index in the device
     */
     start_sector = bldms_block_to_sector(dev, block->header.index);
+    pr_debug("%s: start sector: %llu\n", __func__, start_sector);
     
     /**
      * Open the bldms device as a block device
@@ -185,18 +76,20 @@ int bldms_move_block(struct bldms_device *dev,
         pr_err("%s: failed to open device at %s as a block device\n", __func__, dev->path);
         return -1;
     }
-    
+    pr_debug("%s: bdev opened\n", __func__);
     /**
      * Create a struct bio describing the operations on block
     */
     bio = bio_alloc(GFP_KERNEL, 1);
     if(!bio){
         pr_err("%s: failed to allocate bio\n", __func__);
+        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
         return -1;
     }
     bio ->bi_bdev = bdev;
     bio ->bi_iter.bi_sector = start_sector;
     bio ->bi_opf = op;
+    pr_debug("%s: bio created\n", __func__);
 
     /**
      * Allocates pages to hold serialized block and adds them to the bio 
@@ -205,78 +98,67 @@ int bldms_move_block(struct bldms_device *dev,
     start_page = alloc_pages(GFP_KERNEL | __GFP_ZERO, buffer_order);
     if(!start_page){
         pr_err("%s: failed to allocate pages of order %d\n", __func__, buffer_order);
+        bio_put(bio);
+        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
         return -1;
     }
-    bio_add_page(bio, start_page, dev->block_size, 0);
+    added_pages_len = bio_add_page(bio, start_page, dev->block_size, 0);
+    if (!added_pages_len){
+        pr_err("%s: failed to add page to bio with error %d\n", __func__, res);
+        bio_put(bio);
+        __free_pages(start_page, buffer_order);
+        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
+        return -1;
+    }   
+    pr_debug("%s: pages added to bio\n", __func__);
 
     /**
-     * If op is a write, we need to serialize the block and copy it to the buffer
+     * If it is a write, we fill the pages with the serialized block
     */
     if(op == REQ_OP_WRITE){
+        pr_debug("%s: op is a write\n", __func__);
         buffer = kmap_local_page(start_page);
         bldms_block_serialize(block, buffer);
-        kunmap_local(buffer);
     }
-        
+
     // submits the bio to the I/O subsystem in order to add it to a request
+    /** FIXME: submit_bio_wat() chrashes with null pointer exception*/
+    /*
     res = submit_bio_wait(bio);
     if (res < 0){
         pr_err("%s: failed to submit bio with error %d\n", __func__, res);
+        bio_put(bio);
+        __free_pages(start_page, buffer_order);
+        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
+        return -1;
+    }
+    pr_debug("%s: bio submitted\n", __func__);
+*/
+    
+    if (!bldms_move_bio(dev, bio)){
+        pr_err("%s: failed to move bio\n", __func__);
+        kunmap_local(buffer);
+        bio_put(bio);
+        __free_pages(start_page, buffer_order);
+        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
         return -1;
     }
 
     /**
-     * if op is a read, we need to deserialize the block from the buffer
-     * and copy it to the block struct
+     * If it is a read, we deserialize the block from the pages
     */
     if (op == REQ_OP_READ){
+        pr_debug("%s: op is a read\n", __func__);
         buffer = kmap_local_page(start_page);
         bldms_block_deserialize(block, buffer);
-        kunmap_local(buffer);
     }
-    
+
+    pr_debug("%s: exiting\n", __func__);
+    kunmap_local(buffer);
     bio_put(bio);
     __free_pages(start_page, buffer_order);
     blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
 
     return 0;
     
-}
-
-/************** Free blocks list allocation and manipulation*/
-
-struct bldms_free_blocks_list *bldms_create_free_blocks_list(int nr_blocks){
-    struct bldms_free_blocks_list *list;
-    struct bldms_free_blocks_entry *entry;
-    struct bldms_free_blocks_entry *head;
-    int i;
-
-    list = kzalloc(sizeof(struct bldms_free_blocks_list), GFP_KERNEL);
-    spin_lock_init(&list->write_lock);
-    for (i = 0; i < nr_blocks; i ++){
-        entry = kzalloc(sizeof(struct bldms_free_blocks_entry), GFP_KERNEL);
-        entry->block_index = i;
-        if (i == 0){
-            INIT_LIST_HEAD(&entry->list_head);
-            head = entry;
-        }
-        else {
-            list_add(&entry->list_head, &head->list_head);
-        }
-    }
-    list->head = head;
-    return list;
-}
-
-void bldms_destroy_free_blocks_list(struct bldms_free_blocks_list *list){
-
-    struct bldms_free_blocks_entry *pos;
-    
-    spin_lock(&list->write_lock);
-    list_for_each_entry(pos, &list->head->list_head, list_head){
-        list_del_rcu(&pos->list_head);
-        synchronize_rcu();
-        kfree(pos);
-    }
-    spin_unlock(&list->write_lock);
 }
