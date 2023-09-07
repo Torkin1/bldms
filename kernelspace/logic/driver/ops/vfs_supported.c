@@ -51,5 +51,5 @@ void bldms_release(struct gendisk *disk, fmode_t mode){
  * There is no need to implement read() and write() functions.
  * When read() and write() are called from VFS, the requested
  * operations are bundled in a struct request and passed to
- * the functions described in kernelspace/device/request.c  
+ * the request handler.
 */
