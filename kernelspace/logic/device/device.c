@@ -35,19 +35,32 @@ int bldms_init_device(struct bldms_device *dev,
  struct bldms_driver *driver){
     
     int err = 0;
+    int i;
     
     memset(dev, 0, sizeof(struct bldms_device));
 
+    // write some read only info + keep a reference to the driver
     dev->sector_size = sector_size;
     dev->block_size = block_size;
     dev->nr_blocks = nr_blocks;
     dev->driver = driver;
+
+    // flags all blocks as ready to access from ops
+    dev->in_progress_ops = vzalloc(nr_blocks * sizeof(struct completion));
+    if(!dev->in_progress_ops){
+        pr_err("failed to allocate in_progress_ops array\n");
+        return -1;
+    }
+    for (i = 0; i < nr_blocks; i ++){
+        init_completion(dev ->in_progress_ops + i);
+        complete(dev ->in_progress_ops + i);
+    }
     
     // initializes data buffer
     dev->data_size = nr_blocks * block_size;
     dev->data = vzalloc(dev->data_size);
     if(!dev->data){
-        pr_err("vzalloc failed to allocate %d bytes of memory\n", dev->data_size);
+        pr_err("vzalloc failed to allocate %d bytes of data buffer\n", dev->data_size);
         return -1;
     }
 
@@ -108,6 +121,7 @@ int bldms_init_device(struct bldms_device *dev,
     // initializes blocks lists
     dev ->free_blocks = bldms_create_blocks_list(nr_blocks);
     dev ->used_blocks = bldms_create_blocks_list(0);
+    dev ->prepared_for_write_blocks = bldms_create_blocks_list(0);
 
     // set path name
     snprintf(dev->path, 32, "/dev/%s", dev->gd->disk_name);

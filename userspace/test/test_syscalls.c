@@ -5,5 +5,5 @@
 
 int test_syscall(void){
 
-    return call_test(0);
+    return call_kernelspace_test(0);
 }

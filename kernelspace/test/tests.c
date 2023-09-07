@@ -62,14 +62,6 @@ static int test_block_move(void){
 
     pr_debug("%s: test blocks prepared\n", __func__);
     
-    // testing write reservation of block 0
-    if (bldms_reserve_block(test_dev, 0)){
-        pr_err("%s: failed to reserve block\n", __func__);
-        res = -1;
-        goto test_block_move_exit;
-    }
-    pr_debug("%s: reserved block %d\n", __func__, 0);
-
     if (bldms_blocks_get_entry_from_block_index(test_dev ->used_blocks, 0) == NULL){
         pr_err("%s: failed to get entry for block %d in used blocks list\n",
          __func__, 0);
@@ -130,7 +122,6 @@ __SYSCALL_DEFINEx(1, _test_driver, int, test_index){
 }
 
 static unsigned long test_syscall = (unsigned long) usctm_get_syscall_symbol(test_driver);
-#define bldms_get_string_from_symbol(symbol) #symbol
 
 int bldms_tests_init(struct bldms_device *device){
 
@@ -142,7 +133,7 @@ int bldms_tests_init(struct bldms_device *device){
         return -1;
     }
 
-    test_syscall_desc = usctm_register_syscall(syscall_tbl, test_syscall, bldms_get_string_from_symbol(test_driver));
+    test_syscall_desc = usctm_register_syscall(syscall_tbl, test_syscall, usctm_get_string_from_symbol(test_driver));
     if (test_syscall_desc < 0){
         pr_err("%s: failed to register test syscall\n", __func__);
         return -1;

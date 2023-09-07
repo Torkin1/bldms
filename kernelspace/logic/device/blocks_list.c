@@ -3,6 +3,8 @@
 #include <linux/slab.h>
 
 #include "device/blocks_list.h"
+#include "device/block.h"
+
 
 struct bldms_blocks_list *bldms_create_blocks_list(int nr_blocks){
     struct bldms_blocks_list *list;
@@ -59,7 +61,7 @@ struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index(
     
     rcu_read_lock();
     list_for_each_entry_rcu(current_block_entry, &list->head->list_head, list_head){
-        pr_debug("%s: checking entry for block %d\n", __func__, current_block_entry->block_index);  
+        pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
         if(current_block_entry->block_index == block_index){
             rcu_read_unlock();
             pr_debug("%s: found entry for block %d\n", __func__, block_index);
@@ -71,7 +73,14 @@ struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index(
     pr_debug("%s: entry for block %d not found\n", __func__, block_index);
     return NULL;
 
- }
+}
+
+/**
+ * @return true if the given list contains a block entry with the given index
+*/
+bool bldms_blocks_contains(struct bldms_blocks_list *list, int block_index){
+    return bldms_blocks_get_entry_from_block_index(list, block_index) != NULL;
+}
 
 /**
  * Same as bldms_blocks_get_entry_from_block_index(), but without
@@ -80,17 +89,24 @@ struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index(
 struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index_writers(struct bldms_blocks_list *list,
  int block_index){
     struct bldms_blocks_entry *current_block_entry;
-    
+    int current_entry_block_index;
+
     list_for_each_entry(current_block_entry, &list->head->list_head, list_head){
-        if(current_block_entry->block_index == block_index){
+        pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
+        current_entry_block_index = current_block_entry->block_index;
+        if(current_entry_block_index == block_index 
+         || block_index == BLDMS_ANY_BLOCK_INDEX){
+            pr_debug("%s: found entry for block %d\n", __func__, block_index);
             return current_block_entry;
         }
-     }
+    }
+    pr_debug("%s: entry for block %d not found\n", __func__, block_index);
     return NULL;
  }
 
 /**
- * Moves one entry from a blocks list after another one
+ * Moves one entry from a blocks list after another one;
+ * @return -1 if error, else the index of the moved block
 */
 int bldms_blocks_move_block(struct bldms_blocks_list *to,
 struct bldms_blocks_list *from, int from_block_index){
@@ -114,6 +130,7 @@ struct bldms_blocks_list *from, int from_block_index){
     pr_debug("%s: entry removed from list 1\n", __func__);
     list_add_rcu(&entry->list_head, &to->head->list_head);
     pr_debug("%s: entry added to list 2\n", __func__);
+    res = entry ->block_index;
 
 bldms_blocks_move_block_exit:
     spin_unlock(&from->write_lock);

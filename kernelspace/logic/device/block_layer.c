@@ -6,25 +6,104 @@
 
 /************** Block layer interactions with the block device*/
 
-int bldms_reserve_block(struct bldms_device *dev, int block_index){
+bool bldms_block_contains_valid_data(struct bldms_device *dev, int block_index){
+    return bldms_blocks_contains(dev->used_blocks, block_index);
+}
+
+/**
+ * Reserves the desired block for writing
+*/
+int bldms_prepare_write_on_block(struct bldms_device *dev, int block_index){
     int res = 0;
-    pr_debug("%s: dev is %p\n", __func__, dev);
-    res = bldms_blocks_move_block(dev->used_blocks, dev->free_blocks, block_index);
-    if (res){
-        pr_err("%s: failed to reserve block %d\n", __func__, block_index);
+    res = bldms_blocks_move_block(dev->prepared_for_write_blocks, dev->free_blocks,
+     block_index);
+    if (res < 0){
+        pr_err("%s: failed to move block %d in in_use_by_write_bocks\n", __func__, block_index);
         return -1;
     }
     return res;
 }
 
-int bldms_release_block(struct bldms_device *dev, int block_index){
+/**
+ * Commits the write to the desired block, marking it as occupied by valid data
+*/
+int bldms_commit_write_on_block(struct bldms_device *dev, int block_index){
+    int res = 0;
+    res = bldms_blocks_move_block(dev->used_blocks, dev ->prepared_for_write_blocks,
+     block_index);
+    if (res < 0){
+        pr_err("%s: failed to move block %d in used_blocks\n", __func__, block_index);
+        return -1;
+    }
+    return res;
+}
+
+/**
+ * Marks the desired block as free to use
+*/
+int bldms_invalidate_block(struct bldms_device *dev, int block_index){
     int res = 0;
     res = bldms_blocks_move_block(dev->free_blocks, dev->used_blocks, block_index);
-    if (res){
+    if (res < 0){
         pr_err("%s: failed to release block %d\n", __func__, block_index);
         return -1;
     }
     return res;
+}
+
+/**
+ * Prepares a block for writing
+*/
+int bldms_prepare_write_on_block_any(struct bldms_device *dev){
+
+    int block_index;
+
+    block_index = bldms_prepare_write_on_block(dev, BLDMS_ANY_BLOCK_INDEX);
+    if (block_index < 0){
+        pr_err("%s: no free blocks available in device\n", __func__);
+        return -1;
+    }
+    return block_index;    
+
+}
+
+/**
+ * Undoes the reserving of a block from writing
+*/
+int bldms_undo_write_on_block(struct bldms_device *dev, int block_index){
+
+    int res = 0;
+    res = bldms_blocks_move_block(dev->free_blocks, dev->prepared_for_write_blocks,
+     block_index);
+    if (res){
+        pr_err("%s: failed to move block %d in free_blocks\n", __func__, block_index);
+        return -1;
+    }
+    return res;
+
+}
+
+/**
+ * Signals that an operation is in progress on a block
+ * This function sleeps until the underway operation is completed or a signal is caught
+*/
+int bldms_start_op_on_block(struct bldms_device *dev, int block_index){
+    
+    int res_wait;
+    
+    res_wait = wait_for_completion_interruptible(dev->in_progress_ops + block_index);
+    if (res_wait == -ERESTARTSYS){
+        pr_err("%s: interrupted while waiting pending op on block %d\n", __func__, block_index);
+        return -1;
+    }
+    return 0;
+}
+
+/**
+ * Call this when your operation has completed on a block
+*/
+void bldms_end_op_on_block(struct bldms_device *dev, int block_index){
+    complete(dev->in_progress_ops + block_index);
 }
 
 /**
@@ -36,17 +115,7 @@ sector_t bldms_block_to_sector(struct bldms_device *dev,
     return block_index * (dev->block_size / dev->sector_size);    
 }
 
-/**
- * Translates a sector index in the device to a block index
-*/
-int bldms_sector_to_block(struct bldms_device *dev, 
-    sector_t sector_index){
-    
-    // TODO: implement
-    return -1;    
-}
-
-/** Moves one block of data*/
+/** Moves one block of data to/from the device*/
 int bldms_move_block(struct bldms_device *dev,
     struct bldms_block *block, enum req_opf op){
     
@@ -135,7 +204,7 @@ int bldms_move_block(struct bldms_device *dev,
     pr_debug("%s: bio submitted\n", __func__);
 */
     
-    if (!bldms_move_bio(dev, bio)){
+    if (bldms_move_bio(dev, bio)){
         pr_err("%s: failed to move bio\n", __func__);
         kunmap_local(buffer);
         bio_put(bio);

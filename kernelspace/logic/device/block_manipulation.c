@@ -1,36 +1,51 @@
 #include <linux/slab.h>
+#include <linux/string.h>
+#include <linux/minmax.h>
 
 #include "device/device.h"
 
 /************** Block manipulation stuff*/
 
-int bldms_block_fit_size_to_cap(struct bldms_block *block, size_t size){
-
-    int trimmed_size = 0;
-    trimmed_size = size > block->header.data_capacity ? 
-        block->header.data_capacity : size;
-    return trimmed_size;
-}
-
-int bldms_block_memcpy(struct bldms_block *block, void *data, size_t size){
+/**
+ * Copies data safely to/from a struct block updating its header
+*/
+int bldms_block_memcpy(struct bldms_block *block, void *buffer, size_t buffer_size,
+ enum bldms_block_memcpy_dir dir){
     
     int copied_size = 0;
         
-    copied_size = bldms_block_fit_size_to_cap(block, size);
-    memcpy(block->data, data, copied_size);
-    block->header.data_size = copied_size;
+    switch(dir){
+        case BLDMS_BLOCK_MEMCPY_TO_BLOCK:{
+            copied_size = min(buffer_size, block->header.data_capacity);
+            memcpy(block->data, buffer, copied_size);
+            block->header.data_size = copied_size;
+            break;
+        }
+        case BLDMS_BLOCK_MEMCPY_FROM_BLOCK:{
+            copied_size = min(buffer_size, block->header.data_size);
+            memcpy(buffer, block->data, copied_size);
+            break;
+        }
+        default:{
+            pr_err("%s: invalid data direction\n", __func__);
+            copied_size = -1;
+        }
+    }
 
     return copied_size;
 }
 
-int bldms_block_memset(struct bldms_block *block_, int value_, size_t size_){
-    int copied_size_;
+/**
+ * Sets all block's data bytes to a given value
+ */
+int bldms_block_memset(struct bldms_block *block, int value, size_t size){
+    int copied_size;
 
-    copied_size_ = bldms_block_fit_size_to_cap(block_, size_);
-    memset(block_->data, value_, copied_size_); 
-    block_->header.data_size = copied_size_; 
+    copied_size = min(block->header.data_capacity, size);
+    memset(block->data, value, copied_size); 
+    block->header.data_size = copied_size; 
 
-    return copied_size_;
+    return copied_size;
 }
 
 /************** Block allocation stuff*/
@@ -40,6 +55,10 @@ static size_t bldms_calc_block_header_size(struct bldms_block_header header){
         sizeof(header.index) + sizeof(header.data_capacity);
 }
 
+/**
+ * Allocs and inits a block of given size.
+ * Size must account for the block header size
+*/
 struct bldms_block *bldms_block_alloc(size_t block_size){
     struct bldms_block *block;
     block = kzalloc(sizeof(struct bldms_block), GFP_KERNEL);
@@ -53,7 +72,7 @@ struct bldms_block *bldms_block_alloc(size_t block_size){
     block->header.data_capacity = block_size - block->header.header_size;
     block->data = kzalloc(block->header.data_capacity, GFP_KERNEL);
     if(!block->data){
-        pr_err("%s: failed to allocate block data\n", __func__);
+        pr_err("%s: failed to allocate block data buffer\n", __func__);
         kfree(block);
         return NULL;
     }

@@ -4,5 +4,5 @@
 
 int test_block_move(void){
 
-    return call_test(2);
+    return call_kernelspace_test(2);
 }

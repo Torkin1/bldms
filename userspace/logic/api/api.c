@@ -15,6 +15,9 @@ int build_syscall_desc_path(char *syscall_name, char *syscall_desc_path){
     return 0;
 } 
 
+/**
+ * Reads syscall desc from corresponding pseudo file in syscall_descs_folder
+*/
 int get_syscall_desc(char *syscall_name){
 
     FILE *syscall_desc_file;
@@ -33,12 +36,34 @@ int get_syscall_desc(char *syscall_name){
     return syscall_desc;
 }
 
-int call_test(int test_index){
+int call_kernelspace_test(int test_index){
 
     int test_driver_desc = get_syscall_desc("test_driver");
     ON_ERROR_LOG_AND_RETURN((test_driver_desc < 0), -1, "Failed to get test_driver syscall descriptor\n");
-
-    logMsg(LOG_TAG_D, "%s: calling test driver with index %d\n", __func__, test_index);
     
     return syscall(test_driver_desc, test_index);
+}
+
+int put_data(char * source, size_t size){
+
+    int put_data_desc = get_syscall_desc("put_data");
+    ON_ERROR_LOG_AND_RETURN((put_data_desc < 0), -1, "Failed to get put_data syscall descriptor\n");
+    
+    return syscall(put_data_desc, source, size);
+}
+
+int get_data(int offset, char * destination, size_t size){
+    
+    int get_data_desc = get_syscall_desc("get_data");
+    ON_ERROR_LOG_AND_RETURN((get_data_desc < 0), -1, "Failed to get get_data syscall descriptor\n");
+    
+    return syscall(get_data_desc, offset, destination, size);
+}
+
+int invalidate_data(int offset){
+    
+    int invalidate_data_desc = get_syscall_desc("invalidate_data");
+    ON_ERROR_LOG_AND_RETURN((invalidate_data_desc < 0), -1, "Failed to get invalidate_data syscall descriptor\n");
+    
+    return syscall(invalidate_data_desc, offset);
 }

@@ -8,6 +8,7 @@
 
 #include "device/device.h"
 #include "driver/driver.h"
+#include "driver/ops/ops.h"
 #include "usctm/usctm.h"
 
 #ifdef INIT_KERNELSPACE_TESTS
@@ -71,6 +72,13 @@ static int bldms_init(void){
     pr_info("%s: tests initialized\n", BLDMS_NAME);
     #endif
 
+    // initializes vfs unsupported operations
+    if (bldms_vfs_unsupported_init(&device) < 0){
+        pr_err("%s: unable to initialize vfs unsupported operations\n", __func__);
+        return -1;
+    }
+    pr_info("%s: vfs unsupported operations initialized\n", BLDMS_NAME);
+
     pr_info("%s: module load completed, all ready and set!\n", BLDMS_NAME);
     
     return 0;
@@ -88,6 +96,9 @@ static void bldms_exit(void){
     bldms_tests_cleanup();
     pr_debug("%s: test facilities cleaned up\n", __func__);
     #endif
+
+    bldms_vfs_unsupported_cleanup();
+    pr_debug("%s: vfs unsupported operations cleaned up\n", __func__);
     
     usctm_cleanup();
     pr_debug("%s: syscall table manipulation system cleaned up\n", __func__);

@@ -18,5 +18,6 @@ int usctm_init(char *registered_syscalls_dirname);
 void usctm_cleanup(void);
 
 #define usctm_get_syscall_symbol(syscall) __x64_sys_##syscall
+#define usctm_get_string_from_symbol(symbol) #symbol
 
 #endif // USCTM_H_INCLUDED

@@ -6,5 +6,5 @@
 
 int test_block_serialize(void){
 
-    return call_test(1);
+    return call_kernelspace_test(1);
 }
