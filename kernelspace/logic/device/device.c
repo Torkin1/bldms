@@ -22,6 +22,8 @@ void bldms_invalidate_device(struct bldms_device *dev){
     }
     if(dev->free_blocks){
         bldms_destroy_blocks_list(dev->free_blocks);
+        bldms_destroy_blocks_list(dev->used_blocks);
+        bldms_destroy_blocks_list(dev->prepared_for_write_blocks);
     }
     spin_unlock(&dev->lock);
 }
