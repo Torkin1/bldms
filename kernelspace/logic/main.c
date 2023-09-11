@@ -10,6 +10,7 @@
 #include "driver/driver.h"
 #include "driver/ops/ops.h"
 #include "usctm/usctm.h"
+#include "singlefilefs/singlefilefs.h"
 
 #ifdef INIT_KERNELSPACE_TESTS
 #include "../test/tests.h"
@@ -79,6 +80,12 @@ static int bldms_init(void){
     }
     pr_info("%s: vfs unsupported operations initialized\n", BLDMS_NAME);
 
+    // register singlefilefs in the system
+    if (singlefilefs_init(BLDMS_BLOCKSIZE) < 0){
+        pr_err("%s: unable to initialize singlefilefs\n", __func__);
+        return -1;
+    }
+
     pr_info("%s: module load completed, all ready and set!\n", BLDMS_NAME);
     
     return 0;
@@ -102,6 +109,8 @@ static void bldms_exit(void){
     
     usctm_cleanup();
     pr_debug("%s: syscall table manipulation system cleaned up\n", __func__);
+
+    singlefilefs_exit();
 
     pr_info("%s: module unload completed\n", BLDMS_NAME);
 }
