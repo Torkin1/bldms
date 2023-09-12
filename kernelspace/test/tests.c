@@ -6,7 +6,7 @@
 #include "tests.h"
 
 static int test_syscall_desc;
-static const int test_block_size = 32;
+#define TEST_BLOCK_SIZE 32
 static struct bldms_device *test_dev;
 
 /***************** test implementations*/
@@ -20,14 +20,14 @@ static int test_hello(void){
 static int test_block_serialize(void){
     struct bldms_block *block_expected;
     struct bldms_block *block_actual;
-    u8 buffer[test_block_size];
+    u8 buffer[TEST_BLOCK_SIZE];
 
-    block_expected = bldms_block_alloc(test_block_size);
+    block_expected = bldms_block_alloc(TEST_BLOCK_SIZE);
     if (block_expected == NULL){
         pr_err("%s: failed to allocate expected block\n", __func__);
         return -1;
     }
-    block_actual = bldms_block_alloc(test_block_size);
+    block_actual = bldms_block_alloc(TEST_BLOCK_SIZE);
     if (block_actual == NULL){
         pr_err("%s: failed to allocate actual block\n", __func__);
         return -1;
@@ -52,8 +52,8 @@ static int test_block_move(void){
     struct bldms_block *block_actual;
     int res = 0;
 
-    block_expected = bldms_block_alloc(test_block_size);
-    block_actual = bldms_block_alloc(test_block_size);
+    block_expected = bldms_block_alloc(TEST_BLOCK_SIZE);
+    block_actual = bldms_block_alloc(TEST_BLOCK_SIZE);
     bldms_block_memset(block_expected, 'a',
      block_expected->header.data_capacity - 1);
 
