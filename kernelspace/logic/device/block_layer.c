@@ -128,6 +128,8 @@ int bldms_move_block(struct bldms_device *dev,
     struct block_device *bdev;
     int added_pages_len;
 
+    res = 0; // so many ways to fail, but we are optmistic anyway ...
+    
     /**
      * We need to translate the block index to a sector index in the device
     */
@@ -152,8 +154,8 @@ int bldms_move_block(struct bldms_device *dev,
     bio = bio_alloc(GFP_KERNEL, 1);
     if(!bio){
         pr_err("%s: failed to allocate bio\n", __func__);
-        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-        return -1;
+        res = -1;
+        goto bldms_move_block_exit_bdev_opened;
     }
     bio ->bi_bdev = bdev;
     bio ->bi_iter.bi_sector = start_sector;
@@ -167,17 +169,14 @@ int bldms_move_block(struct bldms_device *dev,
     start_page = alloc_pages(GFP_KERNEL | __GFP_ZERO, buffer_order);
     if(!start_page){
         pr_err("%s: failed to allocate pages of order %d\n", __func__, buffer_order);
-        bio_put(bio);
-        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-        return -1;
+        res = -1;
+        goto bldms_move_block_exit_bio_allocd;
     }
     added_pages_len = bio_add_page(bio, start_page, dev->block_size, 0);
     if (!added_pages_len){
-        pr_err("%s: failed to add page to bio with error %d\n", __func__, res);
-        bio_put(bio);
-        __free_pages(start_page, buffer_order);
-        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-        return -1;
+        pr_err("%s: failed to add page to bio with error\n", __func__);
+        res = -1;
+        goto bldms_move_block_exit_pages_allocd;
     }   
     pr_debug("%s: pages added to bio\n", __func__);
 
@@ -188,18 +187,17 @@ int bldms_move_block(struct bldms_device *dev,
         pr_debug("%s: op is a write\n", __func__);
         buffer = kmap_local_page(start_page);
         bldms_block_serialize(block, buffer);
+        kunmap_local(buffer);
     }
 
     // submits the bio to the I/O subsystem in order to add it to a request
     /** FIXME: submit_bio_wat() chrashes with null pointer exception*/
+
     /*
-    res = submit_bio_wait(bio);
-    if (res < 0){
+    if (submit_bio_wait(bio) < 0){
         pr_err("%s: failed to submit bio with error %d\n", __func__, res);
-        bio_put(bio);
-        __free_pages(start_page, buffer_order);
-        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-        return -1;
+        res = -1;
+        goto bldms_move_block_exit;
     }
     pr_debug("%s: bio submitted\n", __func__);
 */
@@ -207,12 +205,9 @@ int bldms_move_block(struct bldms_device *dev,
     if (bldms_move_bio(dev, bio)){
         pr_err("%s: failed to move bio\n", __func__);
         kunmap_local(buffer);
-        bio_put(bio);
-        __free_pages(start_page, buffer_order);
-        blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-        return -1;
+        res = -1;
+        goto bldms_move_block_exit;
     }
-
     /**
      * If it is a read, we deserialize the block from the pages
     */
@@ -220,14 +215,18 @@ int bldms_move_block(struct bldms_device *dev,
         pr_debug("%s: op is a read\n", __func__);
         buffer = kmap_local_page(start_page);
         bldms_block_deserialize(block, buffer);
+        kunmap_local(buffer);
     }
 
-    pr_debug("%s: exiting\n", __func__);
-    kunmap_local(buffer);
-    bio_put(bio);
+bldms_move_block_exit:
+bldms_move_block_exit_pages_allocd:
     __free_pages(start_page, buffer_order);
+bldms_move_block_exit_bio_allocd:
+    bio_put(bio);
+bldms_move_block_exit_bdev_opened:
     blkdev_put(bdev, FMODE_READ | FMODE_WRITE | FMODE_EXCL);
-
-    return 0;
+    
+    pr_debug("%s: exiting\n", __func__);
+    return res;
     
 }
