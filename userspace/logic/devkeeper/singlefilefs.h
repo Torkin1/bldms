@@ -1,12 +1,14 @@
 /**
- * NOTE: keep in synch with userspace dual
+ * NOTE: keep in synch with kernelspace dual
+ * FIXME: find a way to include kernelspace dual directly in
+ *  userspace build.
 */
 
 #ifndef _ONEFILEFS_H
 #define _ONEFILEFS_H
 
-#include <linux/types.h>
-#include <linux/fs.h>
+#include <sys/types.h>
+#include <stdint.h>
 
 #define SINGLEFILEFS_NAME "SINGLE FILE FS"
 
@@ -48,15 +50,5 @@ struct singlefilefs_sb_info {
 	uint64_t magic;	// magic number to recognize the fs
 
 };
-
-// file.c
-extern const struct inode_operations singlefilefs_inode_ops;
-extern const struct file_operations singlefilefs_file_operations; 
-
-// dir.c
-extern const struct file_operations singlefilefs_dir_operations;
-
-int singlefilefs_init(void);
-void singlefilefs_exit(void);
 
 #endif

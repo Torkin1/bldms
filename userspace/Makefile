@@ -1,4 +1,4 @@
-test_sources= $(wildcard ./test/*.c) #$(wildcard ./test/*.h)
+test_sources= $(wildcard ./test/*.c)
 logic_sources= $(shell find ./logic -name "*.c")
 binDir= ./bin
 

@@ -3,6 +3,7 @@
 #include "driver/driver.h"
 #include "driver/ops/vfs_supported.h"
 #include "device/request.h"
+#include "device/device_core.h"
 
 /**
  * Gets a Major number selected by the kernel
@@ -39,6 +40,7 @@ int bldms_init_driver(struct bldms_driver *driver,
     driver->device_ops.owner = owner;
     driver->device_ops.open = bldms_open;
     driver->device_ops.release = bldms_release;
+    driver->device_ops.submit_bio = bldms_submit_bio;
 
     // fill queue operations
     driver->queue_ops.queue_rq = bldms_request;

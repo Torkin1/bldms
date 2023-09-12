@@ -62,7 +62,7 @@ static int test_block_move(void){
 
     pr_debug("%s: test blocks prepared\n", __func__);
     
-    if (bldms_blocks_get_entry_from_block_index(test_dev ->used_blocks, 0) == NULL){
+    if (bldms_blocks_get_entry_from_block_index(test_dev ->free_blocks, 0) == NULL){
         pr_err("%s: failed to get entry for block %d in used blocks list\n",
          __func__, 0);
         res = -1;
@@ -123,6 +123,7 @@ __SYSCALL_DEFINEx(1, _test_driver, int, test_index){
 
 static unsigned long test_syscall = (unsigned long) usctm_get_syscall_symbol(test_driver);
 
+#ifdef INIT_KERNELSPACE_TESTS
 int bldms_tests_init(struct bldms_device *device){
 
     struct usctm_syscall_tbl *syscall_tbl;
@@ -155,3 +156,7 @@ void bldms_tests_cleanup(void){
 
     usctm_unregister_syscall(syscall_tbl, test_syscall_desc);
 }
+#else
+int bldms_tests_init(struct bldms_device *device){ return 0; }
+void bldms_tests_cleanup(void){}
+#endif

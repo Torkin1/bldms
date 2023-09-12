@@ -16,15 +16,11 @@ blk_status_t bldms_request(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue
     sector_t pos_first_sector;
     size_t nr_sectors;
     void *buffer_data;
-    enum req_opf direction;
+    int direction;
 
     blk_mq_start_request(req);
     pos_first_sector = blk_rq_pos(req);
-    if (rq_data_dir(req))
-        direction = REQ_OP_WRITE; 
-    else
-        direction = REQ_OP_READ;
-
+    direction = rq_data_dir(req);
     /**
      * skip requests which do not involve data blocks transfer
     */

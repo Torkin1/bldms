@@ -9,11 +9,10 @@
 blk_status_t bldms_move_data(
     struct bldms_device *dev,
     unsigned long pos_first_sector, int nr_sectors,
-    void *buffer_data, enum req_opf direction){
+    void *buffer_data, int direction){
     
     unsigned long offset, nr_bytes;
     u8 *start;
-    bool is_write;
 
     // calculate starting position in device buffer and how many bytes to move 
     offset = pos_first_sector * dev->sector_size;
@@ -26,25 +25,17 @@ blk_status_t bldms_move_data(
          __func__, offset + nr_bytes, dev->data_size);
         return BLK_STS_IOERR;
     }
+    pr_debug("%s: direction is %d\n", __func__, direction);
 
-    // choose data direction according to the request being a read or a write
-    switch(direction){
-        case REQ_OP_READ:
-            is_write = false;
-            break;
-        case REQ_OP_WRITE:
-            is_write = true;
-            break;
-        default:
-            pr_err("%s: unsupported data direction %d\n", __func__, direction);
-            return BLK_STS_IOERR;
-    }
-    
-    is_write? memcpy(start, buffer_data, nr_bytes) : memcpy(buffer_data, start, nr_bytes);
+    direction? memcpy(start, buffer_data, nr_bytes) : memcpy(buffer_data, start, nr_bytes);
 
     return BLK_STS_OK;
 }
 
+
+/**
+ * Moves data between the bio and the device
+*/
 int bldms_move_bio(struct bldms_device *dev, struct bio *bio){
 
     struct bio_vec bvec;
@@ -72,4 +63,26 @@ int bldms_move_bio(struct bldms_device *dev, struct bio *bio){
     }
 
     return 0;
+}
+
+/**
+ * Submits a bio to the device
+*/
+blk_qc_t bldms_submit_bio(struct bio *bio){
+
+    struct bldms_device *dev;
+    blk_qc_t res;
+    
+    // we can get the bldms device from the private data of the disk
+    dev = (struct bldms_device *) bio->bi_bdev->bd_disk->private_data;
+
+    if(bldms_move_bio(dev, bio)){
+        pr_err("%s: failed to move bio\n", __func__);
+        res = BLK_QC_T_NONE;
+        goto bldms_submit_bio_exit;
+    }
+    
+bldms_submit_bio_exit:
+    bio_endio(bio);
+    return res;
 }

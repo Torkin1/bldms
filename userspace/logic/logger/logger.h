@@ -52,8 +52,7 @@
 
 
 #define ON_ERROR_LOG_ERRNO_AND_RETURN(isError, retVal, msg, ...) \
-    bool err = isError; \
-    if (err){\
+    if (isError){\
         LOG_ERRNO(isError, msg __VA_OPT__(,) __VA_ARGS__); \
         return retVal; \
     }

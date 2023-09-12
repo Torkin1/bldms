@@ -7,5 +7,6 @@ int test_block_serialize(void);
 int test_block_move(void);
 int test_put_get();
 int test_invalidate();
+int test_devkeeper();
 
 #endif // TEST_SUITES_H_INCLUDED

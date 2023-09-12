@@ -1,6 +1,7 @@
 #include <linux/vmalloc.h>
 
 #include "device/device.h"
+#include "config.h"
 
 void bldms_invalidate_device(struct bldms_device *dev){
     
@@ -117,7 +118,7 @@ int bldms_init_device(struct bldms_device *dev,
     dev->gd->fops = &driver->device_ops;
     dev->gd->queue = dev->queue;
     dev->gd->private_data = dev;
-    snprintf(dev->gd->disk_name, DISK_NAME_LEN, "%sdisk", driver->name);
+    snprintf(dev->gd->disk_name, DISK_NAME_LEN, BLDMS_DEV_NAME);
     set_capacity(dev->gd, nr_blocks * (block_size / sector_size));
 
     // initializes blocks lists

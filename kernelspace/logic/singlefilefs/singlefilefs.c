@@ -14,8 +14,7 @@
 #include <linux/string.h>
 
 #include "singlefilefs.h"
-
-static int dev_sb_block_size;
+#include "config.h"
 
 static struct super_operations singlefilefs_super_ops = {
 };
@@ -35,7 +34,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     //Unique identifier of the filesystem
     sb->s_magic = SINGLEFILEFS_MAGIC;
 
-    if (!sb_set_blocksize(sb, dev_sb_block_size)) {
+    if (!sb_set_blocksize(sb, BLDMS_BLOCKSIZE)) {
         pr_err("%s: error setting blocksize\n",__func__);
         return -1;
     }
@@ -48,6 +47,8 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     sb_disk = (struct singlefilefs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
     brelse(bh); // discards sb_disk
+
+    pr_debug("%s: singlefilefs superblock loaded: magic is %llx\n",__func__, magic);
 
     //check on the expected magic number
     if(magic != sb->s_magic){
@@ -64,6 +65,8 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
         pr_err("%s: error getting root inode\n",__func__);
         return -ENOMEM;
     }
+
+    pr_debug("%s: root inode loaded\n",__func__);
 
     root_inode->i_ino = SINGLEFILEFS_ROOT_INODE_NUMBER;//this is actually 10
     inode_init_owner(&init_user_ns, root_inode, NULL, S_IFDIR);//set the root user as owned of the FS root
@@ -90,7 +93,6 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     //unlock the inode to make it usable
     unlock_new_inode(root_inode);
 
-    pr_debug("%s: singlefilefs superblock loaded: magic is %llu\n",__func__, magic);
 
     return 0;
 }
@@ -126,11 +128,9 @@ static struct file_system_type onefilefs_type = {
 };
 
 
-int singlefilefs_init(size_t dev_sb_block_size_) {
+int singlefilefs_init() {
 
     int ret;
-
-    dev_sb_block_size = dev_sb_block_size_;
 
     //register filesystem
     ret = register_filesystem(&onefilefs_type);

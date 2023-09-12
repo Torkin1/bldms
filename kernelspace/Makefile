@@ -18,4 +18,5 @@ load: bldms.ko
 	lsmod | grep $(module_name)
 
 unload: 
-	sudo rmmod -f bldms
+	-sudo umount ./test_mount
+	-sudo rmmod -f bldms
