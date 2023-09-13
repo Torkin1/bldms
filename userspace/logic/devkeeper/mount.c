@@ -14,7 +14,7 @@ int devkeeper_mount_device(char *dev_path, char *mount_point){
 
     mount_flags = MS_NODEV | MS_NOEXEC | MS_NOSUID;    
     ON_ERROR_LOG_ERRNO_AND_RETURN(mount(dev_path, mount_point, SINGLEFILEFS_FS_NAME,
-     mount_flags, NULL), -1, "Failed to mount device at %s\n", dev_path);
+     mount_flags, NULL), -1, "Failed to mount device at %s:", dev_path);
     
     return 0;
 

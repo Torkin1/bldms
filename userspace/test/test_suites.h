@@ -8,5 +8,6 @@ int test_block_move(void);
 int test_put_get();
 int test_invalidate();
 int test_devkeeper();
+int test_mount_twice();
 
 #endif // TEST_SUITES_H_INCLUDED

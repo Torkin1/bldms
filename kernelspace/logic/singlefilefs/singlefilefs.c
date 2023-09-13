@@ -141,7 +141,7 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
     if (b_layer.mounted){
         pr_err("%s: error mounting singlefilefs: already mounted\n",__func__);
         spin_unlock(&b_layer.mounted_lock);
-        return NULL;
+        return ERR_PTR(-EEXIST);
     }
     spin_unlock(&b_layer.mounted_lock);
 
