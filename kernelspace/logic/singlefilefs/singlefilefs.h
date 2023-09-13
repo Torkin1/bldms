@@ -56,7 +56,7 @@ extern const struct file_operations singlefilefs_file_operations;
 // dir.c
 extern const struct file_operations singlefilefs_dir_operations;
 
-int singlefilefs_init(void);
+int singlefilefs_init(size_t block_size, int nr_blocks);
 void singlefilefs_exit(void);
 
 #endif

@@ -2,7 +2,7 @@
 #define BLOCK_SERIALIZATION_H_INCLUDED
 
 #include <linux/types.h>
-#include "device/block.h"
+#include "block.h"
 
 /**
  * Reads block data and header from a byte array.

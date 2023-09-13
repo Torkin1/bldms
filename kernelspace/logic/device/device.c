@@ -21,11 +21,6 @@ void bldms_invalidate_device(struct bldms_device *dev){
     if(dev->data){
         vfree(dev->data);
     }
-    if(dev->free_blocks){
-        bldms_destroy_blocks_list(dev->free_blocks);
-        bldms_destroy_blocks_list(dev->used_blocks);
-        bldms_destroy_blocks_list(dev->prepared_for_write_blocks);
-    }
     spin_unlock(&dev->lock);
 }
 
@@ -34,33 +29,20 @@ void bldms_invalidate_device(struct bldms_device *dev){
  * TODO: implement multi-device support
 */
 int bldms_init_device(struct bldms_device *dev,
- int nr_blocks, size_t block_size, size_t sector_size,
+ sector_t nr_sectors, size_t sector_size,
  struct bldms_driver *driver){
     
     int err = 0;
-    int i;
     
     memset(dev, 0, sizeof(struct bldms_device));
 
     // write some read only info + keep a reference to the driver
     dev->sector_size = sector_size;
-    dev->block_size = block_size;
-    dev->nr_blocks = nr_blocks;
     dev->driver = driver;
 
-    // flags all blocks as ready to access from ops
-    dev->in_progress_ops = vzalloc(nr_blocks * sizeof(struct completion));
-    if(!dev->in_progress_ops){
-        pr_err("failed to allocate in_progress_ops array\n");
-        return -1;
-    }
-    for (i = 0; i < nr_blocks; i ++){
-        init_completion(dev ->in_progress_ops + i);
-        complete(dev ->in_progress_ops + i);
-    }
     
     // initializes data buffer
-    dev->data_size = nr_blocks * block_size;
+    dev->data_size = nr_sectors * sector_size;
     dev->data = vzalloc(dev->data_size);
     if(!dev->data){
         pr_err("vzalloc failed to allocate %d bytes of data buffer\n", dev->data_size);
@@ -119,12 +101,7 @@ int bldms_init_device(struct bldms_device *dev,
     dev->gd->queue = dev->queue;
     dev->gd->private_data = dev;
     snprintf(dev->gd->disk_name, DISK_NAME_LEN, BLDMS_DEV_NAME);
-    set_capacity(dev->gd, nr_blocks * (block_size / sector_size));
-
-    // initializes blocks lists
-    dev ->free_blocks = bldms_create_blocks_list(nr_blocks);
-    dev ->used_blocks = bldms_create_blocks_list(0);
-    dev ->prepared_for_write_blocks = bldms_create_blocks_list(0);
+    set_capacity(dev->gd, nr_sectors);
 
     // set path name
     snprintf(dev->path, 32, "/dev/%s", dev->gd->disk_name);

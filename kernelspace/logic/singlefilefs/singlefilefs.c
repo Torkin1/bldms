@@ -12,9 +12,25 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/wait.h>
 
 #include "singlefilefs.h"
 #include "config.h"
+#include "block_layer/block_layer.h"
+#include "block_layer/blocks_list.h"
+#include "driver/ops/vfs_unsupported.h"
+
+/**
+ * Provides a block-level view of the single file stored in
+ * a device mounted with singlefilefs.
+*/
+static struct bldms_block_layer b_layer;
+
+/**
+ * wait queue to put the thread to wait for remaining operations on device
+ * before unmounting it
+*/
+DECLARE_WAIT_QUEUE_HEAD(unmount_queue);
 
 static struct super_operations singlefilefs_super_ops = {
 };
@@ -56,7 +72,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
         return -EBADF;
     }
 
-    sb->s_fs_info = NULL; //FS specific data (the magic number) already reported into the generic superblock
+    sb->s_fs_info = NULL; 
     sb->s_op = &singlefilefs_super_ops;//set our own operations
 
 
@@ -93,11 +109,23 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     //unlock the inode to make it usable
     unlock_new_inode(root_inode);
 
+    // store ref to sb to make it accessible by non-VFS functions
+    bldms_block_layer_register_sb(&b_layer, sb);
 
     return 0;
 }
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
+    
+    
+    spin_lock(&b_layer.mounted_lock);
+    b_layer.mounted = false;
+    spin_unlock(&b_layer.mounted_lock);
+
+    // wait for all operations on the device to finish
+    wait_event_interruptible(unmount_queue, atomic_read(&b_layer.users) == 0);
+    
+    bldms_block_layer_clean(&b_layer);
     kill_block_super(s);
     printk(KERN_INFO "%s: singlefilefs unmount succesful.\n",SINGLEFILEFS_NAME);
     return;
@@ -108,6 +136,16 @@ struct dentry *singlefilefs_mount(struct file_system_type *fs_type, int flags, c
 
     struct dentry *ret;
 
+    // only one mount is supported at any time
+    spin_lock(&b_layer.mounted_lock);
+    if (b_layer.mounted){
+        pr_err("%s: error mounting singlefilefs: already mounted\n",__func__);
+        spin_unlock(&b_layer.mounted_lock);
+        return NULL;
+    }
+    spin_unlock(&b_layer.mounted_lock);
+
+    // mounts singlefilefs from the provided device
     ret = mount_bdev(fs_type, flags, dev_name, data, singlefilefs_fill_super);
 
     if (unlikely(IS_ERR(ret)))
@@ -128,9 +166,26 @@ static struct file_system_type onefilefs_type = {
 };
 
 
-int singlefilefs_init() {
+int singlefilefs_init(size_t block_size, int nr_blocks) {
 
     int ret;
+
+    //init block layer
+    bldms_block_layer_init(&b_layer, block_size, nr_blocks);
+
+    // reserve superblock and inode blocks
+    bldms_blocks_move_block(b_layer.used_blocks, b_layer.free_blocks, 
+     SINGLEFILEFS_SB_BLOCK_NUMBER);
+    bldms_blocks_move_block(b_layer.used_blocks, b_layer.free_blocks,
+     SINGLEFILEFS_INODES_BLOCK_NUMBER);
+
+    // initializes vfs unsupported operations
+    if (bldms_vfs_unsupported_init(&b_layer) < 0){
+        pr_err("%s: unable to initialize vfs unsupported operations\n", __func__);
+        return -1;
+    }
+    pr_info("%s: vfs unsupported operations initialized\n", BLDMS_NAME);
+
 
     //register filesystem
     ret = register_filesystem(&onefilefs_type);
@@ -145,6 +200,8 @@ int singlefilefs_init() {
 void singlefilefs_exit(void) {
 
     int ret;
+
+    bldms_vfs_unsupported_cleanup();
 
     //unregister filesystem
     ret = unregister_filesystem(&onefilefs_type);

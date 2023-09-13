@@ -7,7 +7,7 @@ int main(){
     //ON_ERROR_LOG_AND_RETURN(test_syscall(), EXIT_FAILURE, "Test failed\n");
     //ON_ERROR_LOG_AND_RETURN(test_block_serialize(), EXIT_FAILURE, "Test failed\n");
     //ON_ERROR_LOG_AND_RETURN(test_block_move(), EXIT_FAILURE, "Test failed\n");
+    //ON_ERROR_LOG_AND_RETURN(test_devkeeper(), EXIT_FAILURE, "Test failed\n");
+    ON_ERROR_LOG_AND_RETURN(test_invalidate(), EXIT_FAILURE, "Test failed\n");
     //ON_ERROR_LOG_AND_RETURN(test_put_get(), EXIT_FAILURE, "Test failed\n");
-    //ON_ERROR_LOG_AND_RETURN(test_invalidate(), EXIT_FAILURE, "Test failed\n");
-    ON_ERROR_LOG_AND_RETURN(test_devkeeper(), EXIT_FAILURE, "Test failed\n");
 }

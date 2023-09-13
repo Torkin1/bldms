@@ -2,8 +2,8 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
-#include "device/blocks_list.h"
-#include "device/block.h"
+#include "blocks_list.h"
+#include "block.h"
 
 
 struct bldms_blocks_list *bldms_create_blocks_list(int nr_blocks){
@@ -18,7 +18,7 @@ struct bldms_blocks_list *bldms_create_blocks_list(int nr_blocks){
     for (i = 0; i < nr_blocks; i ++){
         entry = kzalloc(sizeof(struct bldms_blocks_entry), GFP_KERNEL);
         entry->block_index = i;
-        list_add(&entry->list_head, &list->head->list_head);
+        list_add_tail(&entry->list_head, &list->head->list_head);
     }
     return list;
 }

@@ -2,7 +2,7 @@
 #include <linux/string.h>
 #include <linux/minmax.h>
 
-#include "device/device.h"
+#include "block.h"
 
 /************** Block manipulation stuff*/
 

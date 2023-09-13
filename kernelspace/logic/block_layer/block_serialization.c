@@ -1,4 +1,4 @@
-#include "device/block_serialization.h"
+#include "block_serialization.h"
 #include <linux/string.h>
 
 void bldms_memcpy_stateful(void * dest, void * src, size_t size,

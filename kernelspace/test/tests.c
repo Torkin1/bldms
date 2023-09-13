@@ -2,7 +2,8 @@
 
 #include "usctm/usctm.h"
 #include "device/device.h"
-#include "device/block_serialization.h"
+#include "block_layer/block_serialization.h"
+#include "block_layer/block_layer.h"
 #include "tests.h"
 
 static int test_syscall_desc;
@@ -48,43 +49,49 @@ static int test_block_serialize(void){
 }
 
 static int test_block_move(void){
+    
+    struct bldms_block_layer b_layer;
     struct bldms_block *block_expected;
     struct bldms_block *block_actual;
+    const int block_index = 2;
+    const int nr_blocks = 3;
     int res = 0;
+
+    bldms_block_layer_init(&b_layer, TEST_BLOCK_SIZE, nr_blocks);
 
     block_expected = bldms_block_alloc(TEST_BLOCK_SIZE);
     block_actual = bldms_block_alloc(TEST_BLOCK_SIZE);
     bldms_block_memset(block_expected, 'a',
      block_expected->header.data_capacity - 1);
 
-    block_expected->header.index = 0;
-    block_actual->header.index = 0;
+    block_expected->header.index = block_index;
+    block_actual->header.index = block_index;
 
     pr_debug("%s: test blocks prepared\n", __func__);
     
-    if (bldms_blocks_get_entry_from_block_index(test_dev ->free_blocks, 0) == NULL){
-        pr_err("%s: failed to get entry for block %d in used blocks list\n",
-         __func__, 0);
+    if (bldms_blocks_get_entry_from_block_index(b_layer.free_blocks, block_index) == NULL){
+        pr_err("%s: failed to get entry for block %d in free blocks list\n",
+         __func__, block_index);
         res = -1;
         goto test_block_move_exit; 
     }
-    pr_debug("%s: got entry for block %d in used blocks list\n", __func__, 0);
+    pr_debug("%s: got entry for block %d in used blocks list\n", __func__, block_index);
     
     // test write to block 0
-    if (bldms_move_block(test_dev, block_expected, REQ_OP_WRITE)){
+    if (bldms_move_block(&b_layer, block_expected, WRITE)){
         pr_err("%s: failed to write block\n", __func__);
         res = -1;
         goto test_block_move_exit;
     }
-    pr_debug("%s: wrote block %d\n", __func__, 0);
+    pr_debug("%s: wrote block %d\n", __func__, block_index);
 
     // test read of block 0
-    if (bldms_move_block(test_dev, block_actual, REQ_OP_READ)){
+    if (bldms_move_block(&b_layer, block_actual, READ)){
         pr_err("%s: failed to read block\n", __func__);
         res = -1;
         goto test_block_move_exit;
     }
-    pr_debug("%s: read block %d\n", __func__, 0);
+    pr_debug("%s: read block %d\n", __func__, block_index);
 
     if (strcmp(block_expected->data, block_actual->data)){
         pr_err("%s: expected: %s, actual: %s\n", __func__, (char *)block_expected->data,

@@ -24,6 +24,8 @@ static struct bldms_device device;  // represents the device in memory
 
 static int bldms_init(void){
     
+    sector_t nr_sectors;
+    
     pr_info("%s: Loading bldms module\n", BLDMS_NAME);
 
     // Initializes driver struct
@@ -36,8 +38,9 @@ static int bldms_init(void){
      BLDMS_NAME, driver.major);
 
     // creates needed devices (default is one)
-    if(bldms_init_device(&device, BLDMS_NBLOCKS, BLDMS_BLOCKSIZE,
-     BLDMS_KERNEL_SECTOR_SIZE, &driver) < 0){
+    nr_sectors = BLDMS_NBLOCKS * (BLDMS_BLOCKSIZE / BLDMS_KERNEL_SECTOR_SIZE);
+    if(bldms_init_device(&device, nr_sectors, BLDMS_KERNEL_SECTOR_SIZE,
+     &driver) < 0){
         pr_err("%s: unable to initialize device\n", __func__);
         return -1;
     }
@@ -60,15 +63,8 @@ static int bldms_init(void){
         return -1;
     }
 
-    // initializes vfs unsupported operations
-    if (bldms_vfs_unsupported_init(&device) < 0){
-        pr_err("%s: unable to initialize vfs unsupported operations\n", __func__);
-        return -1;
-    }
-    pr_info("%s: vfs unsupported operations initialized\n", BLDMS_NAME);
-
     // register singlefilefs in the system
-    if (singlefilefs_init() < 0){
+    if (singlefilefs_init(BLDMS_BLOCKSIZE, BLDMS_NBLOCKS) < 0){
         pr_err("%s: unable to initialize singlefilefs\n", __func__);
         return -1;
     }
