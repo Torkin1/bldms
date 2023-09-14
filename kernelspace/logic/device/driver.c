@@ -18,8 +18,6 @@ static int bldms_modify_device_user_count(struct bldms_device *dev, int howmany)
 
 int bldms_open(struct block_device *bdev, fmode_t mode){
 
-    // TODO: must fail with ENODEV if not mounted
-    
     struct bldms_device *dev = bdev->bd_disk->private_data;
     int res;
 
@@ -35,8 +33,6 @@ int bldms_open(struct block_device *bdev, fmode_t mode){
 
 void bldms_release(struct gendisk *disk, fmode_t mode){
 
-    // TODO: must fail with ENODEV if not mounted
-    
     struct bldms_device *dev = disk->private_data;
     int res = 0;
 
@@ -75,6 +71,7 @@ blk_status_t bldms_request(struct blk_mq_hw_ctx *hctx, const struct blk_mq_queue
     blk_mq_start_request(req);
     pos_first_sector = blk_rq_pos(req);
     direction = rq_data_dir(req);
+    
     /**
      * skip requests which do not involve data blocks transfer
     */
