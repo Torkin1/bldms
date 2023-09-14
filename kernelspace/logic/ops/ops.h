@@ -1,8 +1,8 @@
 #ifndef OPS_H_INCLUDED
 #define OPS_H_INCLUDED
 
-#include "driver/ops/vfs_supported.h"
-#include "driver/ops/vfs_unsupported.h"
+#include "vfs_supported.h"
+#include "vfs_unsupported.h"
 #include "block_layer/block_layer.h"
 
 #include <linux/spinlock.h>

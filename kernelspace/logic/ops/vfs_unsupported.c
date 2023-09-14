@@ -1,6 +1,6 @@
 #include <linux/syscalls.h>
 
-#include "driver/ops/ops.h"
+#include "ops.h"
 #include "usctm/usctm.h"
 #include "block_layer/block_layer.h"
 #include "block_layer/block.h"
@@ -151,7 +151,7 @@ __SYSCALL_DEFINEx(2, _put_data, char *, source, size_t, size){
     }
 
     // write block to device
-    res = bldms_move_block(b_layer, block, REQ_OP_WRITE);
+    res = bldms_move_block(b_layer, block, WRITE);
     if (res < 0){
         pr_err("%s: failed to write block %d to device\n", __func__, block_index);
         bldms_invalidate_block(b_layer, block_index);

@@ -18,7 +18,7 @@
 #include "config.h"
 #include "block_layer/block_layer.h"
 #include "block_layer/blocks_list.h"
-#include "driver/ops/vfs_unsupported.h"
+#include "ops/vfs_unsupported.h"
 
 /**
  * Provides a block-level view of the single file stored in
@@ -202,6 +202,7 @@ void singlefilefs_exit(void) {
     int ret;
 
     bldms_vfs_unsupported_cleanup();
+    pr_debug("%s: vfs unsupported operations cleaned up\n", __func__);
 
     //unregister filesystem
     ret = unregister_filesystem(&onefilefs_type);

@@ -1,4 +1,3 @@
-#include "device/device_core.h"
 #include "device/device.h"
 
 /**

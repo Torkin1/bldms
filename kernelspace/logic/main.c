@@ -7,8 +7,7 @@
 #include <linux/string.h>
 
 #include "device/device.h"
-#include "driver/driver.h"
-#include "driver/ops/ops.h"
+#include "device/driver.h"
 #include "usctm/usctm.h"
 #include "singlefilefs/singlefilefs.h"
 #include "config.h"
@@ -83,9 +82,6 @@ static void bldms_exit(void){
     pr_debug("%s: bldms driver succesfully unregistered\n", __func__);
     
     bldms_tests_cleanup();
-
-    bldms_vfs_unsupported_cleanup();
-    pr_debug("%s: vfs unsupported operations cleaned up\n", __func__);
     
     usctm_cleanup();
     pr_debug("%s: syscall table manipulation system cleaned up\n", __func__);

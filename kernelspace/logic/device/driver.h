@@ -17,4 +17,9 @@ int bldms_init_driver(struct bldms_driver *driver,
  const char *driver_name, struct module *owner, int minors);
 void bldms_invalidate_driver(struct bldms_driver *driver);
 
+blk_status_t bldms_request(struct blk_mq_hw_ctx *hctx,
+ const struct blk_mq_queue_data *bd);
+void bldms_release(struct gendisk *disk, fmode_t mode);
+int bldms_open(struct block_device *bdev, fmode_t mode);
+
 #endif // DRIVER_H_INCLUDED

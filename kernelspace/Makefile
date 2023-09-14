@@ -1,7 +1,7 @@
 module_name=bldms
 
 obj-m += $(module_name).o
-bldms-objs += logic/main.o logic/driver/driver.o logic/driver/ops/vfs_supported.o logic/driver/ops/vfs_unsupported.o logic/device/device.o logic/block_layer/block_layer.o logic/block_layer/block_manipulation.o logic/block_layer/block_serialization.o logic/block_layer/blocks_list.o logic/device/request.o logic/device/device_core.o logic/usctm/usctm.o logic/usctm/lib/vtpmo.o logic/singlefilefs/singlefilefs.o logic/singlefilefs/file.o logic/singlefilefs/dir.o test/tests.o
+bldms-objs += logic/main.o logic/device/driver.o logic/ops/vfs_supported.o logic/ops/vfs_unsupported.o logic/device/device.o logic/block_layer/block_layer.o logic/block_layer/block_manipulation.o logic/block_layer/block_serialization.o logic/block_layer/blocks_list.o logic/device/device_core.o logic/usctm/usctm.o logic/usctm/lib/vtpmo.o logic/singlefilefs/singlefilefs.o logic/singlefilefs/file.o logic/singlefilefs/dir.o test/tests.o
 
 PWD := $(CURDIR)
 
