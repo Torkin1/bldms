@@ -27,10 +27,6 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
 
 
 struct dentry *onefilefs_lookup(struct inode *parent_inode, struct dentry *child_dentry, unsigned int flags) {
-
-    /**
-     * TODO: rewrite this method using block-layer or request functions
-    */
     
     struct singlefilefs_inode *FS_specific_inode;
     struct super_block *sb = parent_inode->i_sb;
