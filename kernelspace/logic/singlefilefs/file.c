@@ -47,11 +47,10 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     char my_buffer[len];
     
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",SINGLEFILEFS_NAME, len, *off, file_size);
-     
-    
-    // check if we are reading in range
-    if (*off >= file_size || *off < 0) return 0;
-    
+
+    might_sleep();
+    memset(my_buffer, 0, len);
+
     // lock the file position to avoid threads sharing same fd to concurrently 
     // corrupt it
     if (mutex_lock_interruptible(&filp ->f_pos_lock)){
@@ -59,7 +58,12 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
         bldms_block_layer_put(b_layer);
         return -EINTR;
     }
-    
+
+    // check if we are reading in range
+    // FIXME: use file_size
+    //if (*off >= file_size || *off < 0) return 0;
+    if (*off < 0) return 0;
+        
     read = bldms_read(b_layer, my_buffer, len, off);
 
     mutex_unlock(&filp ->f_pos_lock);

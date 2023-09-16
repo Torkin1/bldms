@@ -32,6 +32,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     memset(b_valid_indexes, -1, b_layer->nr_blocks * sizeof(int));
     buf_cursor = buf;
     stream_cursor = 0;
+    first_block_read = false;
 
     /**
      * We cannot sleep/block while traversing a rcu list, so we need to get all 
@@ -125,7 +126,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
              * 
              * we are before the desired stream offset, we skip this valid block
             */
-            pr_debug("%s: before desired offset");
+            pr_debug("%s: before desired offset", __func__);
             bldms_block_free(b);
             continue;
         }
@@ -141,8 +142,9 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
             */
             pr_debug("%s: first block read\n", __func__);
             first_block_read = true;
-            b_start = stream_cursor - *off;
-            b_len = min((size_t)(b->header.data_size - b_start), (size_t)(len - read));
+            b_start = b->header.data_size - stream_cursor + *off;
+            b_len = min((size_t)(b->header.data_size - b_start), len);
+            pr_debug("%s: b_start: %lld, b_len: %lu\n", __func__, b_start, b_len);
         }
         else if(stream_cursor >= *off && first_block_read && stream_cursor < *off + len){
             /**
@@ -190,6 +192,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     }
 
     pr_debug("%s: read %ld bytes\n", __func__, read);
+    *off += read;
     return read;
 
 }
