@@ -61,16 +61,16 @@ struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index(
     
     rcu_read_lock();
     list_for_each_entry_rcu(current_block_entry, &list->head->list_head, list_head){
-        pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
+ //       pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
         if(current_block_entry->block_index == block_index){
             rcu_read_unlock();
-            pr_debug("%s: found entry for block %d\n", __func__, block_index);
+ //           pr_debug("%s: found entry for block %d\n", __func__, block_index);
             return current_block_entry;
         }
      }
     rcu_read_unlock();
     
-    pr_debug("%s: entry for block %d not found\n", __func__, block_index);
+//    pr_debug("%s: entry for block %d not found\n", __func__, block_index);
     return NULL;
 
 }
@@ -92,15 +92,15 @@ struct bldms_blocks_entry *bldms_blocks_get_entry_from_block_index_writers(struc
     int current_entry_block_index;
 
     list_for_each_entry(current_block_entry, &list->head->list_head, list_head){
-        pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
+  //      pr_debug("%s: checking entry with block %d\n", __func__, current_block_entry->block_index);  
         current_entry_block_index = current_block_entry->block_index;
         if(current_entry_block_index == block_index 
          || block_index == BLDMS_ANY_BLOCK_INDEX){
-            pr_debug("%s: found entry for block %d\n", __func__, block_index);
+   //         pr_debug("%s: found entry for block %d\n", __func__, block_index);
             return current_block_entry;
         }
     }
-    pr_debug("%s: entry for block %d not found\n", __func__, block_index);
+ //   pr_debug("%s: entry for block %d not found\n", __func__, block_index);
     return NULL;
  }
 
@@ -117,7 +117,7 @@ struct bldms_blocks_list *from, int from_block_index){
     spin_lock(&from->write_lock);
     spin_lock(&to->write_lock);
 
-    pr_debug("%s: locks acquired\n", __func__);
+ //   pr_debug("%s: locks acquired\n", __func__);
 
     entry = bldms_blocks_get_entry_from_block_index_writers(from, from_block_index);
     if(!entry){
@@ -125,11 +125,11 @@ struct bldms_blocks_list *from, int from_block_index){
         res = -1;
         goto bldms_blocks_move_block_exit;
     }
-    pr_debug("%s: entry found with index %d\n", __func__, entry->block_index);
+   // pr_debug("%s: entry found with index %d\n", __func__, entry->block_index);
     list_del_rcu(&entry->list_head);
-    pr_debug("%s: entry removed from list 1\n", __func__);
-    list_add_rcu(&entry->list_head, &to->head->list_head);
-    pr_debug("%s: entry added to list 2\n", __func__);
+   // pr_debug("%s: entry removed from list 1\n", __func__);
+    list_add_tail_rcu(&entry->list_head, &to->head->list_head);
+   // pr_debug("%s: entry added to list 2\n", __func__);
     res = entry ->block_index;
 
 bldms_blocks_move_block_exit:
@@ -137,3 +137,34 @@ bldms_blocks_move_block_exit:
     spin_unlock(&to->write_lock);
     return res;
 }
+
+/**
+ * Stores all block indexes contained in the list in the given array without exceeding
+ * max_blocks
+ * @param block_indexes: array of integers
+ * @param max_blocks: maximum number of blocks to be stored in the array
+ * @param list: list of block entries
+ * @return the number of blocks contained in the list
+*/
+int bldms_blocks_snapshot(struct bldms_blocks_list *list, int *block_indexes,
+ int max_blocks){
+
+    int nr_block_indexes;
+    struct bldms_blocks_entry *be_current;
+
+    nr_block_indexes = 0;
+    rcu_read_lock();
+    list_for_each_entry_rcu(be_current, &list->head->list_head, list_head){
+        if(nr_block_indexes >= max_blocks){
+            pr_warn("%s: only a subset of block indexes can fit in provided array\n",
+             __func__);
+            break;
+        }
+        block_indexes[nr_block_indexes] = be_current->block_index;
+        nr_block_indexes ++;
+    }
+    rcu_read_unlock();
+
+    return nr_block_indexes;
+
+ }

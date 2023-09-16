@@ -38,7 +38,7 @@ int devkeeper_format_device(char * dev_path){
     lseek(fd, SINGLEFILEFS_FILE_INODE_BLOCK * BLDMS_BLOCKSIZE, SEEK_SET);
 	file_inode.mode = S_IFREG;
 	file_inode.inode_no = SINGLEFILEFS_FILE_INODE_NUMBER;
-	file_inode.file_size = 0; // empty file
+	file_inode.file_size = BLDMS_BLOCKSIZE * BLDMS_NBLOCKS; // make room for all the blocks
 	written = write(fd, (char *)&file_inode, sizeof(file_inode));
 
 	if (written != sizeof(root_inode)) {

@@ -1,12 +1,15 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/buffer_head.h>
+#include <linux/blk_types.h>
+#include <linux/genhd.h>
+#include <linux/vmalloc.h>
 
 #include "block_serialization.h"
 #include "blocks_list.h"
 #include "block_layer.h"
-#include "device/device.h" // TODO: remove this dependency
-#include "config.h" // TODO: remove this dependency
+
+/************** Block layer management **************/
 
 void bldms_block_layer_put(struct bldms_block_layer *b_layer_){
     atomic_sub(1, &b_layer_->users);
@@ -45,6 +48,7 @@ int bldms_block_layer_init(struct bldms_block_layer *b_layer,
     b_layer ->free_blocks = bldms_create_blocks_list(nr_blocks);
     b_layer ->used_blocks = bldms_create_blocks_list(0);
     b_layer ->prepared_for_write_blocks = bldms_create_blocks_list(0);
+    b_layer ->reserved_blocks = bldms_create_blocks_list(0);
 
     return 0;
 
@@ -71,10 +75,34 @@ void bldms_block_layer_clean(struct bldms_block_layer *b_layer){
 
 }
 
-/************** Block layer interactions with the block device*/
+/************** Block layer interactions ******************/
 
+/**
+ * Gets a snapshot of all valid block indexes at the moment of the calling
+*/
+int bldms_get_valid_block_indexes(struct bldms_block_layer *b_layer,
+ int *block_indexes, int max_blocks){
+    return bldms_blocks_snapshot(b_layer->used_blocks, block_indexes, max_blocks);
+ }
+
+/**
+ * @return true if the block contains valid data, false otherwise
+*/
 bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer, int block_index){
     return bldms_blocks_contains(b_layer->used_blocks, block_index);
+}
+
+/**
+ * Reserves a free block, hiding it from most of ops
+*/
+int bldms_reserve_block(struct bldms_block_layer *b_layer, int block_index){
+    int res = 0;
+    res = bldms_blocks_move_block(b_layer->reserved_blocks, b_layer->free_blocks,
+     block_index);
+    if (res < 0){
+        pr_err("%s: failed to move block %d in reserved_blocks\n", __func__, block_index);
+    }
+    return res;
 }
 
 /**
@@ -158,6 +186,7 @@ int bldms_start_op_on_block(struct bldms_block_layer *b_layer, int block_index){
     
     int res_wait;
     
+    might_sleep();
     res_wait = wait_for_completion_interruptible(b_layer->in_progress_ops + block_index);
     if (res_wait == -ERESTARTSYS){
         pr_err("%s: interrupted while waiting pending op on block %d\n", __func__, block_index);
@@ -183,6 +212,7 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
     struct buffer_head *bh;
     int res;
 
+    might_sleep();
     res = 0;
 
     /**

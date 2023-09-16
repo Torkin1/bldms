@@ -5,9 +5,6 @@
 #include "vfs_unsupported.h"
 #include "block_layer/block_layer.h"
 
-#include <linux/spinlock.h>
-#include <linux/atomic.h>
-
 #define bldms_abort_op_if(cond_, msg_, ...) {\
     if (cond_)\
     {\

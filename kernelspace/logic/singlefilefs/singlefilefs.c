@@ -17,7 +17,6 @@
 #include "singlefilefs.h"
 #include "config.h"
 #include "block_layer/block_layer.h"
-#include "block_layer/blocks_list.h"
 #include "ops/vfs_unsupported.h"
 
 /**
@@ -72,7 +71,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
         return -EBADF;
     }
 
-    sb->s_fs_info = NULL; 
+    sb->s_fs_info = &b_layer;    // store a reference to the block layer in the sb 
     sb->s_op = &singlefilefs_super_ops;//set our own operations
 
 
@@ -89,6 +88,7 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     root_inode->i_sb = sb;
     root_inode->i_op = &singlefilefs_inode_ops;//set our inode operations
     root_inode->i_fop = &singlefilefs_dir_operations;//set our file operations
+    
     //update access permission
     root_inode->i_mode = S_IFDIR | S_IRUSR | S_IRGRP | S_IROTH | S_IWUSR | S_IWGRP | S_IXUSR | S_IXGRP | S_IXOTH;
 
@@ -117,7 +117,8 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
 
 static void singlefilefs_kill_superblock(struct super_block *s) {
     
-    
+    might_sleep();
+
     spin_lock(&b_layer.mounted_lock);
     b_layer.mounted = false;
     spin_unlock(&b_layer.mounted_lock);
@@ -173,11 +174,9 @@ int singlefilefs_init(size_t block_size, int nr_blocks) {
     //init block layer
     bldms_block_layer_init(&b_layer, block_size, nr_blocks);
 
-    // reserve superblock and inode blocks
-    bldms_blocks_move_block(b_layer.used_blocks, b_layer.free_blocks, 
-     SINGLEFILEFS_SB_BLOCK_NUMBER);
-    bldms_blocks_move_block(b_layer.used_blocks, b_layer.free_blocks,
-     SINGLEFILEFS_INODES_BLOCK_NUMBER);
+    // reserves superblock and inode blocks
+    bldms_reserve_block(&b_layer, SINGLEFILEFS_SB_BLOCK_NUMBER);
+    bldms_reserve_block(&b_layer, SINGLEFILEFS_INODES_BLOCK_NUMBER);
 
     // initializes vfs unsupported operations
     if (bldms_vfs_unsupported_init(&b_layer) < 0){

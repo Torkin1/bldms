@@ -20,6 +20,10 @@ struct bldms_block_layer {
     struct bldms_blocks_list *free_blocks; // list of blocks containing invalid data
     struct bldms_blocks_list *used_blocks; // list of blocks containing valid data
     /**
+     * Userspace cannot invalidate or put data in blocks of reserved list
+    */
+    struct bldms_blocks_list *reserved_blocks; 
+    /**
       * There is a possible race condition between get_data() and put_data():
       * get_data():                 put_data():
       *                             reserve_block()
@@ -62,11 +66,12 @@ void bldms_block_layer_clean(struct bldms_block_layer *b_layer);
 int bldms_block_layer_register_sb(struct bldms_block_layer *b_layer,
  struct super_block *sb);
 
-//sector_t bldms_block_to_sector(struct bldms_device *dev, int block_index);
 int bldms_move_block(struct bldms_block_layer *b_layer,
  struct bldms_block *block, int direction);
 bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer,
  int block_index);
+int bldms_get_valid_block_indexes(struct bldms_block_layer *b_layer,
+ int *block_indexes, int max_blocks);
 int bldms_prepare_write_on_block(struct bldms_block_layer *b_layer, int block_index);
 int bldms_prepare_write_on_block_any(struct bldms_block_layer *b_layer);
 int bldms_commit_write_on_block(struct bldms_block_layer *b_layer, int block_index);
@@ -74,17 +79,21 @@ int bldms_undo_write_on_block(struct bldms_block_layer *b_layer, int block_index
 int bldms_start_op_on_block(struct bldms_block_layer *b_layer, int block_index);
 void bldms_end_op_on_block(struct bldms_block_layer *b_layer, int block_index);
 int bldms_invalidate_block(struct bldms_block_layer *b_layer, int block_index);
+int bldms_reserve_block(struct bldms_block_layer *b_layer, int block_index);
 
-#define bldms_block_layer_use(b_layer_){\
-    spin_lock(&b_layer_->mounted_lock);\
-    if (!b_layer_->mounted){\
-        spin_unlock(&b_layer_->mounted_lock);\
+#define bldms_if_mounted(b_layer__, do_){\
+    spin_lock(&b_layer__->mounted_lock);\
+    if (!b_layer__->mounted){\
+        spin_unlock(&b_layer__->mounted_lock);\
         pr_err("%s: device is not mounted\n", __func__);\
         return -ENODEV;\
     }\
-    atomic_add(1, &b_layer_->users);\
-    spin_unlock(&b_layer_->mounted_lock);\
+    do_;\
+    spin_unlock(&b_layer__->mounted_lock);\
 }
+
+#define bldms_block_layer_use(b_layer_) bldms_if_mounted(b_layer_, atomic_add(1, &b_layer_->users));\
+
 
 void bldms_block_layer_put(struct bldms_block_layer *b_layer_);
 

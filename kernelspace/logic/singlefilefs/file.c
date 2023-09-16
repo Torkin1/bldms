@@ -1,5 +1,3 @@
-#include <linux/init.h>
-#include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/timekeeping.h>
 #include <linux/time.h>
@@ -7,22 +5,71 @@
 #include <linux/types.h>
 #include <linux/slab.h>
 #include <linux/string.h>
+#include <linux/mutex.h>
+#include <linux/kernel.h>
+#include <linux/uaccess.h>
 
 #include "singlefilefs.h"
+#include "block_layer/block_layer.h"
+#include "ops/vfs_supported.h"
 
+ssize_t onefilefs_write(struct file *, const char __user *, size_t, loff_t *){
+
+    // unsupported
+    return -ENOTSUPP;
+}
+
+int onefilefs_open(struct inode *inode, struct file *filp){
+    struct bldms_block_layer *b_layer = inode->i_sb->s_fs_info;
+    bldms_block_layer_use(b_layer);
+
+    pr_debug("%s: open operation called\n",SINGLEFILEFS_NAME);
+
+    return 0;
+    
+}
+
+int onefilefs_release(struct inode *inode, struct file *filp){
+    struct bldms_block_layer *b_layer = inode->i_sb->s_fs_info;
+
+    bldms_if_mounted(b_layer, bldms_block_layer_put(b_layer));
+    pr_debug("%s: release operation called\n",SINGLEFILEFS_NAME);
+
+    return 0;
+}
 
 ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t * off) {
 
     struct inode * the_inode = filp->f_inode;
     uint64_t file_size = the_inode->i_size;
-
+    struct bldms_block_layer *b_layer = the_inode->i_sb->s_fs_info;
+    ssize_t read;
+    char my_buffer[len];
+    
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",SINGLEFILEFS_NAME, len, *off, file_size);
+     
     
-    /**
-     * TODO: implement this method using block-layer or request functions
-    */
+    // check if we are reading in range
+    if (*off >= file_size || *off < 0) return 0;
     
-    return 0;
+    // lock the file position to avoid threads sharing same fd to concurrently 
+    // corrupt it
+    if (mutex_lock_interruptible(&filp ->f_pos_lock)){
+        pr_err("%s: interrupted while waiting to lock the file position\n",__func__);
+        bldms_block_layer_put(b_layer);
+        return -EINTR;
+    }
+    
+    read = bldms_read(b_layer, my_buffer, len, off);
+
+    mutex_unlock(&filp ->f_pos_lock);
+
+    if (read > 0 && copy_to_user(buf, my_buffer, read)){       
+        pr_err("%s: failed to copy data to user\n",__func__);
+        return -EFAULT;   
+    }
+
+    return read;
 }
 
 
@@ -88,4 +135,7 @@ const struct inode_operations singlefilefs_inode_ops = {
 const struct file_operations singlefilefs_file_operations = {
     .owner = THIS_MODULE,
     .read = onefilefs_read,
+    .open = onefilefs_open,
+    .release = onefilefs_release,
+    .write = onefilefs_write,
 };
