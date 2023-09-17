@@ -6,6 +6,10 @@
 #include "devkeeper.h"
 #include "singlefilefs.h"
 #include "../../kernelspace/logic/config.h"
+#include "api/api.h"
+
+#define BLDMS_BLOCKSIZE get_int_param("BLDMS_BLOCKSIZE")
+#define BLDMS_NBLOCKS get_int_param("BLDMS_NBLOCKS")
 
 /**
  * Formats a device with the singlefilefs filesystem

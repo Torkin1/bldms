@@ -1,5 +1,6 @@
 #include <linux/types.h>
 #include <linux/minmax.h>
+#include <linux/slab.h>
 
 #include "vfs_supported.h"
 #include "block_layer/block_layer.h"
@@ -13,7 +14,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
  loff_t *off) {
     
     ssize_t read;
-    int b_valid_indexes[b_layer->nr_blocks];
+    int *b_valid_indexes;
     int be_i;   // block entry index, used to traverse b_valid_indexes
     int b_i;    // block index
     loff_t b_start;    // where do we need to start reading data from block
@@ -29,6 +30,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     bool first_block_read;
     
     read = 0;
+    b_valid_indexes = kmalloc(b_layer->nr_blocks * sizeof(int), GFP_KERNEL);
     memset(b_valid_indexes, -1, b_layer->nr_blocks * sizeof(int));
     buf_cursor = buf;
     stream_cursor = 0;
@@ -193,6 +195,8 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
 
     pr_debug("%s: read %ld bytes\n", __func__, read);
     *off += read;
+
+    kfree(b_valid_indexes);
     return read;
 
 }

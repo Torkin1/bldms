@@ -44,18 +44,19 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     uint64_t file_size = the_inode->i_size;
     struct bldms_block_layer *b_layer = the_inode->i_sb->s_fs_info;
     ssize_t read;
-    char my_buffer[len];
+    char *my_buffer;
     
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",SINGLEFILEFS_NAME, len, *off, file_size);
 
     might_sleep();
-    memset(my_buffer, 0, len);
+    my_buffer = kzalloc(len * sizeof(char), GFP_KERNEL);
 
     // lock the file position to avoid threads sharing same fd to concurrently 
     // corrupt it
     if (mutex_lock_interruptible(&filp ->f_pos_lock)){
         pr_err("%s: interrupted while waiting to lock the file position\n",__func__);
         bldms_block_layer_put(b_layer);
+        kfree(my_buffer);
         return -EINTR;
     }
 
@@ -70,9 +71,9 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
 
     if (read > 0 && copy_to_user(buf, my_buffer, read)){       
         pr_err("%s: failed to copy data to user\n",__func__);
-        return -EFAULT;   
+        read = -EFAULT;   
     }
-
+    kfree(my_buffer);
     return read;
 }
 

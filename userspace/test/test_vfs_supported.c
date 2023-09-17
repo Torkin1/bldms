@@ -34,7 +34,6 @@ int test_vfs_read(){
     const char *the_file = "./test_mount/the-file";
     char expected[size_msgs(msgs) + 1];
     char actual[size_msgs(msgs) + 1];
-    int actual_read;
     int fd;
     int res = 0;
     int expected_i = 0;
@@ -50,7 +49,7 @@ int test_vfs_read(){
 
     fd = open(the_file, O_RDONLY);
 
-    actual_read = read(fd, actual, size_msgs(msgs));
+    read(fd, actual, size_msgs(msgs));
     if (memcmp(expected, actual, size_msgs(msgs)) != 0){
         printf("expected: %s\n", expected);
         printf("actual: %s\n", actual);
