@@ -21,6 +21,33 @@ MODULE_LICENSE("GPL");
 static struct bldms_driver driver;  // driver related data
 static struct bldms_device device;  // represents the device in memory
 
+/**
+ * Setup configuration parameters
+*/
+
+char *BLDMS_NAME = BLDMS_NAME_DEFAULT;
+module_param(BLDMS_NAME, charp, 0444);
+
+int BLDMS_MINORS = BLDMS_MINORS_DEFAULT;
+module_param(BLDMS_MINORS, int, 0444);
+
+int BLDMS_NBLOCKS = BLDMS_NBLOCKS_DEFAULT;
+module_param(BLDMS_NBLOCKS, int, 0444);
+
+int BLDMS_KERNEL_SECTOR_SIZE = BLDMS_KERNEL_SECTOR_SIZE_DEFAULT;
+module_param(BLDMS_KERNEL_SECTOR_SIZE, int, 0444);
+
+int BLDMS_BLOCKSIZE = BLDMS_BLOCKSIZE_DEFAULT;
+module_param(BLDMS_BLOCKSIZE, int, 0444);
+
+char *BLDMS_SYSCALL_DESCS_DIRNAME = BLDMS_SYSCALL_DESCS_DIRNAME_DEFAULT;
+module_param(BLDMS_SYSCALL_DESCS_DIRNAME, charp, 0444);
+
+char *BLDMS_DEV_NAME = BLDMS_DEV_NAME_DEFAULT;
+module_param(BLDMS_DEV_NAME, charp, 0444);
+
+#define BLDMS_NR_SECTORS_IN_BLOCK BLDMS_BLOCKSIZE / BLDMS_KERNEL_SECTOR_SIZE
+
 static int bldms_init(void){
     
     sector_t nr_sectors;
