@@ -100,7 +100,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
             bldms_skip_block(b_layer, b_i);
         }
         bldms_end_op_on_block(b_layer, b_i);
-        pr_debug("%s: data in block %d is %s\n", __func__, b_i, b->data);
+        pr_debug("%s: data in block %d is %s\n", __func__, b_i, (char *)b->data);
 
         /**
          * Where are we in the stream?
