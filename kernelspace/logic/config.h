@@ -15,4 +15,11 @@
 
 #define BLDMS_DEV_NAME "bldmsdisk"
 
+/**
+ * Default page cache policy is write-back.
+ * To change to write-through, uncomment the following line
+ * or define BLDMS_BLOCK_SYNC_IO when compiling.
+*/
+// #define BLDMS_BLOCK_SYNC_IO
+
 #endif // BLDMS_CONFIG_H

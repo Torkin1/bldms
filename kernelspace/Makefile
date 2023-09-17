@@ -8,6 +8,9 @@ PWD := $(CURDIR)
 debug:
 	KCFLAGS="-DDEBUG -DINIT_KERNELSPACE_TESTS -I$(PWD)/logic -I$(PWD)/test" make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) modules
 
+debug-wt:
+	KCFLAGS="-DDEBUG -DINIT_KERNELSPACE_TESTS -DBLDMS_BLOCK_SYNC_IO -I$(PWD)/logic -I$(PWD)/test" make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) modules
+
 clean:
 	make -C /usr/lib/modules/$(shell uname -r)/build M=$(PWD) clean
 

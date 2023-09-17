@@ -203,6 +203,28 @@ void bldms_end_op_on_block(struct bldms_block_layer *b_layer, int block_index){
 }
 
 /**
+ * Syncs the block corresponding to the given buffer_head
+ * to the device and waits for the operation to complete
+*/
+#ifdef BLDMS_BLOCK_SYNC_IO
+static int bldms_block_sync_io(struct buffer_head *bh){
+    int res;
+
+    might_sleep();
+    res = sync_dirty_buffer(bh);
+    if (res){
+        pr_err("%s: failed to sync buffer head %p\n", __func__, bh);
+        return -1;
+    }
+    return 0;
+}
+#else
+static inline int bldms_block_sync_io(struct buffer_head *bh){
+    return 0;
+}
+#endif
+
+/**
  * Moves one block of data to/from the device.
  * Blocks are abstracted using the buffer_head api
 */
@@ -225,6 +247,7 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
         return -1;
     }
 
+    // do the read/write
     switch(direction){
         case READ:
             bldms_block_deserialize(block, bh->b_data);
@@ -235,7 +258,17 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
             break;
         default:
             pr_err("%s: unsupported data direction %d\n", __func__, direction);
+            res = -1;
             goto bldms_move_block_exit;
+    }
+
+    /**
+     * wait for changes to propagate to device if compiled with write-through policy
+    */
+    if (bldms_block_sync_io(bh)){
+        pr_err("%s: failed to sync block %d\n", __func__, block->header.index);
+        res = -1;
+        goto bldms_move_block_exit;
     }
     
 bldms_move_block_exit:
