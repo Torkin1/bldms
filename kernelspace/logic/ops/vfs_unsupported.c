@@ -1,4 +1,6 @@
 #include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <linux/slab.h>
 
 #include "ops.h"
 #include "usctm/usctm.h"
@@ -59,13 +61,16 @@ invalidate_data_exit:
  * currently
  * valid and associated with the offset parameter.
 */
-__SYSCALL_DEFINEx(3, _get_data, int, offset, char *, destination, size_t, size){
+__SYSCALL_DEFINEx(3, _get_data, int, offset, __user char *, destination, size_t, size){
 
     int data_copied;
     struct bldms_block *block;
     int res;
+    u8 *buffer;
 
     bldms_block_layer_use(b_layer);
+    
+    buffer = kzalloc(b_layer->block_size, GFP_KERNEL);
     
     res = bldms_start_op_on_block(b_layer, offset);
     if (res < 0){
@@ -91,10 +96,16 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, char *, destination, size_t, size){
         data_copied = -1;
         goto get_data_exit;
     }
-    data_copied = bldms_block_memcpy(block, destination, size,
+    data_copied = bldms_block_memcpy(block, buffer, size,
      BLDMS_BLOCK_MEMCPY_FROM_BLOCK);
+    if (copy_to_user(destination, buffer, data_copied)){
+        pr_err("%s: failed to copy data to user\n", __func__);
+        data_copied = -1;
+        goto get_data_exit;
+    }
 
-get_data_exit:    
+get_data_exit:
+    kfree(buffer);    
     bldms_block_free(block);
 get_data_exit_no_block_alloc:
     bldms_end_op_on_block(b_layer, offset);
@@ -113,15 +124,18 @@ get_data_exit_no_block_alloc:
  * no room
  * available on the device, the service should simply return the ENOMEM error;
 */
-__SYSCALL_DEFINEx(2, _put_data, char *, source, size_t, size){
+__SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
     
     int block_index;
     struct bldms_block *block;
     int res;
     int copied_size;
+    u8 *buffer;
 
     bldms_block_layer_use(b_layer);
 
+    buffer = kzalloc(size, GFP_KERNEL);
+    
     // obtain a block index by reserving a free block in device
     block_index = bldms_prepare_write_on_block_any(b_layer);
     if (block_index < 0){
@@ -141,11 +155,17 @@ __SYSCALL_DEFINEx(2, _put_data, char *, source, size_t, size){
     block ->header.index = block_index;
 
     // write data to block
+    if (copy_from_user(buffer, source, size)){
+        pr_err("%s: failed to copy data from user\n", __func__);
+        bldms_undo_write_on_block(b_layer, block_index);
+        block_index = -1;
+        goto put_data_exit;
+    }
     copied_size = bldms_block_memcpy(block, source, size, BLDMS_BLOCK_MEMCPY_TO_BLOCK);
     if(copied_size != size){
         pr_err("%s: cannot fit source data of size %lu in a block of size %lu without\
          truncating\n", __func__, size, block->header.data_capacity);
-        bldms_invalidate_block(b_layer, block_index);
+        bldms_undo_write_on_block(b_layer, block_index);
         block_index = -1;
         goto put_data_exit;
     }
@@ -154,14 +174,14 @@ __SYSCALL_DEFINEx(2, _put_data, char *, source, size_t, size){
     res = bldms_move_block(b_layer, block, WRITE);
     if (res < 0){
         pr_err("%s: failed to write block %d to device\n", __func__, block_index);
-        bldms_invalidate_block(b_layer, block_index);
+        bldms_undo_write_on_block(b_layer, block_index);
         block_index = -1;
         goto put_data_exit;
-    }
-    
+    }    
     bldms_commit_write_on_block(b_layer, block_index);
     
 put_data_exit:
+    kfree(buffer);
     bldms_end_op_on_block(b_layer, block_index);
     bldms_block_layer_put(b_layer);
     bldms_block_free(block);
