@@ -10,7 +10,7 @@ int main(){
     //ON_ERROR_LOG_AND_RETURN(test_devkeeper(), EXIT_FAILURE, "Test failed\n");
     test_devkeeper();
     //ON_ERROR_LOG_AND_RETURN(test_invalidate(), EXIT_FAILURE, "Test failed\n");
-    //ON_ERROR_LOG_AND_RETURN(test_put_get(), EXIT_FAILURE, "Test failed\n");
+    ON_ERROR_LOG_AND_RETURN(test_put_get(), EXIT_FAILURE, "Test failed\n");
     //ON_ERROR_LOG_AND_RETURN(test_mount_twice(), EXIT_FAILURE, "Test failed\n");
-    ON_ERROR_LOG_AND_RETURN(test_vfs_read(), EXIT_FAILURE, "Test failed\n");
+    //ON_ERROR_LOG_AND_RETURN(test_vfs_read(), EXIT_FAILURE, "Test failed\n");
 }

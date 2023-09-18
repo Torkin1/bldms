@@ -161,7 +161,7 @@ __SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
         block_index = -1;
         goto put_data_exit;
     }
-    copied_size = bldms_block_memcpy(block, source, size, BLDMS_BLOCK_MEMCPY_TO_BLOCK);
+    copied_size = bldms_block_memcpy(block, buffer, size, BLDMS_BLOCK_MEMCPY_TO_BLOCK);
     if(copied_size != size){
         pr_err("%s: cannot fit source data of size %lu in a block of size %lu without\
          truncating\n", __func__, size, block->header.data_capacity);
