@@ -42,7 +42,7 @@ struct bldms_block_layer {
     
     /**
      * Another race condition can be this:
-     * get_data():                  put_data():
+     * get_data():                  invalidate_data():
      * block_contains_valid_data()       
      *                              block_contains_valid_data()
      *                              invalidate_block()

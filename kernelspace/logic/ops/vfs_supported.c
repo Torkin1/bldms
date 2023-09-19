@@ -64,7 +64,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
          * WRONG! >:(
          * 
          * Consider the following race condition:
-         * read():                      invalidate():
+         * read():                      invalidate_data():
          * get_valid_block_indexes()
          *                              start_op_on_block()
          *                              invalidate_block()
@@ -75,8 +75,8 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
          * 
          * The read() op will read invalidated data. This happens because
          * after we get all valid block indexes, we lose the read lock on rcu, thus
-         * allowing invalidate() to run after read() knows the index of the block to
-         * read and invalidate it before we actually can read it.
+         * allowing invalidate_data() to invalidate the block to read
+         * before we actually can read it.
          * To solve this, we must check if the block is still valid before we try to
          * read it.
         */
