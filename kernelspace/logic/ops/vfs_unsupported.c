@@ -29,7 +29,7 @@ __SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
         return -1;
     }
     
-    // can't invalidate a block 
+    // can't invalidate a block twice
     if (!bldms_block_contains_valid_data(b_layer, offset)){
         pr_err("%s: block %d contains no valid data\n", __func__, offset);
         invalidate_result = -ENODATA;
@@ -85,7 +85,7 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, __user char *, destination, size_t,
         goto get_data_exit_no_block_alloc;
     }
     
-    // init block hold deserialized data
+    // init block which will hold deserialized data
     block = bldms_block_alloc(b_layer->block_size);
     block->header.index = offset;
 
@@ -136,7 +136,7 @@ __SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
 
     buffer = kzalloc(size, GFP_KERNEL);
     
-    // obtain a block index by reserving a free block in device
+    // obtain a block index by preparing a free block in device for writing
     block_index = bldms_prepare_write_on_block_any(b_layer);
     if (block_index < 0){
         pr_err("%s: failed to reserve block\n", __func__);
