@@ -4,9 +4,9 @@
 #include <linux/blk_types.h>
 #include <linux/genhd.h>
 #include <linux/vmalloc.h>
+#include <linux/srcu.h>
 
 #include "block_serialization.h"
-#include "blocks_list.h"
 #include "block_layer.h"
 
 /************** Block layer management **************/
@@ -25,30 +25,14 @@ void bldms_block_layer_put(struct bldms_block_layer *b_layer_){
 int bldms_block_layer_init(struct bldms_block_layer *b_layer,
  size_t block_size, int nr_blocks){
 
-    int i;
-
     spin_lock_init(&b_layer->mounted_lock);
 
     b_layer->block_size = block_size;
     b_layer->nr_blocks = nr_blocks;
 
-    // flags all blocks as ready to access from ops
-    b_layer->in_progress_ops = vzalloc(nr_blocks * sizeof(struct completion));
-    if(!b_layer->in_progress_ops){
-        pr_err("failed to allocate in_progress_ops array\n");
-        kfree(b_layer);
-        return -1;
-    }
-    for (i = 0; i < nr_blocks; i ++){
-        init_completion(b_layer ->in_progress_ops + i);
-        complete(b_layer ->in_progress_ops + i);
-    }
-
-    // initializes blocks lists
-    b_layer ->free_blocks = bldms_create_blocks_list(nr_blocks);
-    b_layer ->used_blocks = bldms_create_blocks_list(0);
-    b_layer ->prepared_for_write_blocks = bldms_create_blocks_list(0);
-    b_layer ->reserved_blocks = bldms_create_blocks_list(0);
+    init_srcu_struct(&b_layer->srcu);
+    init_completion(&b_layer->in_progress_write);
+    complete(&b_layer->in_progress_write);
 
     return 0;
 
@@ -68,138 +52,227 @@ int bldms_block_layer_register_sb(struct bldms_block_layer *b_layer,
 
 void bldms_block_layer_clean(struct bldms_block_layer *b_layer){
 
-    bldms_destroy_blocks_list(b_layer ->free_blocks);
-    bldms_destroy_blocks_list(b_layer ->used_blocks);
-    bldms_destroy_blocks_list(b_layer ->prepared_for_write_blocks);
-    vfree(b_layer ->in_progress_ops);
 
 }
 
 /************** Block layer interactions ******************/
 
-/**
- * Gets a snapshot of all valid block indexes at the moment of the calling
-*/
-int bldms_get_valid_block_indexes(struct bldms_block_layer *b_layer,
- int *block_indexes, int max_blocks){
-    return bldms_blocks_snapshot(b_layer->used_blocks, block_indexes, max_blocks);
+void bldms_reserve_first_blocks(struct bldms_block_layer *b_layer, int nr_blocks){
+    b_layer->start_data_index = nr_blocks;
+}
+
+void bldms_start_read(struct bldms_block_layer *b_layer, int *reader_id){
+
+    *reader_id = srcu_read_lock(&b_layer->srcu);
+}
+
+void bldms_end_read(struct bldms_block_layer *b_layer, int reader_id){
+
+    srcu_read_unlock(&b_layer->srcu, reader_id);
+}
+
+void bldms_start_write(struct bldms_block_layer *b_layer){
+
+    might_sleep();
+    wait_for_completion(&b_layer->in_progress_write);
+        
+}
+
+void bldms_end_write(struct bldms_block_layer *b_layer){
+
+    complete(&b_layer->in_progress_write);
+}
+
+#define bldms_blocks_foreach_index(block_)\
+    for (; block_->header.index != -1;\
+     block_->header.index = block_->header.next)
+
+struct bldms_block *bldms_blocks_get_block(struct bldms_block_layer *b_layer,
+ struct bldms_blocks_head *list, int block_index){
+
+    struct bldms_block *block;
+    pr_debug("%s: list starts at block %d\n", __func__, list->first_bi);
+
+    block = bldms_block_alloc(b_layer->block_size);
+    block->header.index = list->first_bi;
+
+    bldms_blocks_foreach_index(block){
+        
+        bldms_move_block(b_layer, block, READ);
+        if (block->header.index == block_index || block_index == BLDMS_ANY_BLOCK_INDEX){
+            pr_debug("%s: found block %d\n", __func__, block->header.index);
+            break;
+        }
+    }
+    
+    return block;
  }
 
 /**
  * @return true if the block contains valid data, false otherwise
 */
-bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer, int block_index){
-    return bldms_blocks_contains(b_layer->used_blocks, block_index);
+bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer, 
+ struct bldms_block *block){
+    return block->header.state == BLDMS_BLOCK_STATE_VALID;
+}
+bool bldms_block_contains_invalid_data(struct bldms_block_layer *b_layer, 
+ struct bldms_block *block){
+    return block->header.state == BLDMS_BLOCK_STATE_INVALID;
+ }
+
+/**
+ * Marks some blocks in device head as reserved, hiding them from operations
+*/
+void blmds_reserve_first_blocks(struct bldms_block_layer *b_layer, int nr_blocks){
+
+    b_layer->start_data_index = nr_blocks;
 }
 
 /**
- * Reserves a free block, hiding it from most of ops
+ * Delivers a free block to the caller.
 */
-int bldms_reserve_block(struct bldms_block_layer *b_layer, int block_index){
+int bldms_get_free_block_any_index(struct bldms_block_layer *b_layer, 
+ struct bldms_block **block){
     int res = 0;
-    res = bldms_blocks_move_block(b_layer->reserved_blocks, b_layer->free_blocks,
-     block_index);
-    if (res < 0){
-        pr_err("%s: failed to move block %d in reserved_blocks\n", __func__, block_index);
+    struct bldms_block *b;
+
+    b = bldms_blocks_get_block(b_layer, &b_layer->free_blocks, BLDMS_ANY_BLOCK_INDEX);
+    if (b->header.index < 0){
+        pr_err("%s: no free blocks available\n", __func__);
+        bldms_block_free(b);
+        return -1;
     }
+
+    *block = b;
     return res;
 }
 
 /**
- * Reserves the desired block for writing
+ * Moves one entry from a blocks list after another one;
+ * @return -1 if error, else the index of the moved block
 */
-int bldms_prepare_write_on_block(struct bldms_block_layer *b_layer, int block_index){
+int bldms_blocks_move_block(struct bldms_block_layer *b_layer, 
+struct bldms_blocks_head *to, struct bldms_blocks_head *from,
+struct bldms_block *block){
+
     int res = 0;
-    res = bldms_blocks_move_block(b_layer->prepared_for_write_blocks, b_layer->free_blocks,
-     block_index);
-    if (res < 0){
-        pr_err("%s: failed to move block %d in in_use_by_write_bocks\n", __func__, block_index);
-        return -1;
+    struct bldms_block *b_prev, *b_next, *to_last;
+
+    /**
+     * If there is a previous block, we update their next pointer, else
+     * we update the first_bi pointer of the from list
+    */
+    if (block->header.prev != -1){
+        b_prev = bldms_block_alloc(b_layer ->block_size);
+        b_prev ->header.index = block ->header.prev;
+        res = bldms_move_block(b_layer, b_prev, READ);
+        if (res < 0){
+            pr_err("%s: failed to read block %d, previous of %d\n", __func__,
+             block->header.prev, block->header.index);
+        }
+        b_prev ->header.next = block ->header.next;
+        res = bldms_move_block(b_layer, b_prev, WRITE);
+        if (res < 0){
+            pr_err("%s: failed to write block %d, previous of %d\n", __func__,
+             block->header.prev, block->header.index);
+        }
+        bldms_block_free(b_prev);
     }
+    else {
+        from ->first_bi = block ->header.next;
+    }
+    /**
+     * If there is a next block, we update their prev pointer, else
+     * we update the last_bi pointer of the from list
+    */
+    if (block->header.next != -1){
+        b_next = bldms_block_alloc(b_layer ->block_size);
+        b_next ->header.index = block ->header.next;
+        res = bldms_move_block(b_layer, b_next, READ);
+        if (res < 0){
+            pr_err("%s: failed to read block %d, next of %d\n", __func__,
+             block->header.next, block->header.index);
+        }
+        b_next ->header.prev = block ->header.prev;
+        bldms_move_block(b_layer, b_next, WRITE);
+        if (res < 0){
+            pr_err("%s: failed to write block %d, next of %d\n", __func__,
+             block->header.next, block->header.index);
+        }
+        bldms_block_free(b_next);
+    }
+    else {
+        from ->last_bi = block ->header.prev;
+    }
+    /**
+     * give last readers time to exit from block to move
+    */
+    synchronize_srcu(&b_layer->srcu);
+    /**
+     * Append block to list
+    */
+    if (to ->last_bi == -1){
+        to ->first_bi = block ->header.index;
+        to ->last_bi = block ->header.index;
+    }
+    else {
+        to_last = bldms_block_alloc(b_layer ->block_size);
+        to_last ->header.index = to ->last_bi;
+        res = bldms_move_block(b_layer, to_last, READ);
+        if (res < 0){
+            pr_err("%s: failed to read block %d, last of to list\n", __func__,
+            to->last_bi);
+        }
+        to_last ->header.next = block ->header.index;
+        block ->header.prev = to_last ->header.index;
+        block ->header.next = -1;
+        res = bldms_move_block(b_layer, to_last, WRITE);
+        if (res < 0){
+            pr_err("%s: failed to write block %d, last of to list\n", __func__,
+            to->last_bi);
+        }
+        bldms_block_free(to_last);
+    }
+
     return res;
 }
 
-/**
- * Commits the write to the desired block, marking it as occupied by valid data
-*/
-int bldms_commit_write_on_block(struct bldms_block_layer *b_layer, int block_index){
-    int res = 0;
-    res = bldms_blocks_move_block(b_layer->used_blocks, b_layer ->prepared_for_write_blocks,
-     block_index);
-    if (res < 0){
-        pr_err("%s: failed to move block %d in used_blocks\n", __func__, block_index);
-        return -1;
-    }
+int bldms_blocks_move_block_index(struct bldms_block_layer *b_layer, 
+ struct bldms_blocks_head *to, struct bldms_blocks_head *from,
+ int block_index){
+    struct bldms_block *block;
+    int res;
+
+    block = bldms_blocks_get_block(b_layer, from, block_index);
+    res = bldms_blocks_move_block(b_layer, to, from, block);
+    bldms_block_free(block);
     return res;
 }
 
 /**
  * Marks the desired block as free to use
 */
-int bldms_invalidate_block(struct bldms_block_layer *b_layer, int block_index){
+int bldms_invalidate_block(struct bldms_block_layer *b_layer, struct bldms_block *block){
     int res = 0;
-    res = bldms_blocks_move_block(b_layer->free_blocks, b_layer->used_blocks, block_index);
+    
+    block ->header.state = BLDMS_BLOCK_STATE_INVALID;
+    res = bldms_blocks_move_block(b_layer, &b_layer->free_blocks, &b_layer->used_blocks,
+        block);
+
+    return res;
+}
+int bldms_validate_block(struct bldms_block_layer *b_layer,
+ struct bldms_block *block){
+
+    int res = 0;
+    block->header.state = BLDMS_BLOCK_STATE_VALID;
+    res = bldms_blocks_move_block(b_layer, &b_layer->used_blocks, &b_layer->free_blocks,
+     block);
     if (res < 0){
-        pr_err("%s: failed to release block %d\n", __func__, block_index);
-        return -1;
+        pr_err("%s: failed to move block %d from free to used blocks\n", __func__,
+         block->header.index);
     }
     return res;
-}
-
-/**
- * Prepares a block for writing
-*/
-int bldms_prepare_write_on_block_any(struct bldms_block_layer *b_layer){
-
-    int block_index;
-
-    block_index = bldms_prepare_write_on_block(b_layer, BLDMS_ANY_BLOCK_INDEX);
-    if (block_index < 0){
-        pr_err("%s: no free blocks available in device\n", __func__);
-        return -1;
-    }
-    return block_index;    
-
-}
-
-/**
- * Undoes the reserving of a block from writing
-*/
-int bldms_undo_write_on_block(struct bldms_block_layer *b_layer, int block_index){
-
-    int res = 0;
-    res = bldms_blocks_move_block(b_layer->free_blocks, b_layer->prepared_for_write_blocks,
-     block_index);
-    if (res){
-        pr_err("%s: failed to move block %d in free_blocks\n", __func__, block_index);
-        return -1;
-    }
-    return res;
-
-}
-
-/**
- * Signals that an operation is in progress on a block
- * This function sleeps until the underway operation is completed or a signal is caught
-*/
-int bldms_start_op_on_block(struct bldms_block_layer *b_layer, int block_index){
-    
-    int res_wait;
-    
-    might_sleep();
-    res_wait = wait_for_completion_interruptible(b_layer->in_progress_ops + block_index);
-    if (res_wait == -ERESTARTSYS){
-        pr_err("%s: interrupted while waiting pending op on block %d\n", __func__, block_index);
-        return -1;
-    }
-    return 0;
-}
-
-/**
- * Call this when your operation has completed on a block
-*/
-void bldms_end_op_on_block(struct bldms_block_layer *b_layer, int block_index){
-    complete(b_layer->in_progress_ops + block_index);
 }
 
 /**
@@ -237,6 +310,11 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
     might_sleep();
     res = 0;
 
+    if (block->header.index < 0){
+        pr_err("%s: invalid block index %d\n", __func__, block->header.index);
+        return -1;
+    }
+
     /**
      * Get buffer head correspoding to given block
     */
@@ -253,7 +331,17 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
             bldms_block_deserialize(block, bh->b_data);
             break;
         case WRITE:
-            bldms_block_serialize(block, bh->b_data);
+            /**
+             * FIXME: there is a race condition between the writer and new readers
+             * which have started after last grace period expired. Readers can access
+             * the buffer head content while it is being modified by the writer, thus
+             * leading to possibily inconsistent reads.
+             * This can be solved if we can copy the data in a buffer array and
+             * then switch the b_data pointer to such buffer array after a grace period
+             * expires, but I do not
+             * know the ownership of the original b_data pointer. (Who frees it?)
+            */
+            bldms_block_serialize(block, bh->b_data);        
             mark_buffer_dirty(bh);
             break;
         default:

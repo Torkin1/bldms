@@ -18,12 +18,12 @@ int test_devkeeper(){
     get_string_param("BLDMS_DEV_NAME", BLDMS_DEV_NAME);
 
     sprintf(dev_path, "/dev/%s", BLDMS_DEV_NAME);
-    ON_ERROR_LOG_AND_RETURN(devkeeper_format_device(dev_path), -1,
-     "Failed to format device at %s", dev_path);
+    ON_ERROR_LOG_AND_RETURN(devkeeper_format_device(dev_path, BLDMS_BLOCKSIZE_DEFAULT, BLDMS_NBLOCKS_DEFAULT), -1,
+     "Failed to format device at %s\n", dev_path);
     ON_ERROR_LOG_AND_RETURN(devkeeper_create_mountpoint(mount_point, 0777), -1, 
-     "Failed to create mount point at %s", mount_point);
+     "Failed to create mount point at %s\n", mount_point);
     ON_ERROR_LOG_AND_RETURN(devkeeper_mount_device(dev_path, mount_point), -1,
-     "Failed to mount device at %s", dev_path);
+     "Failed to mount device at %s\n", dev_path);
     
     return 0;
 }
@@ -40,17 +40,17 @@ int test_mount_twice(){
 
 
     sprintf(dev_path, "/dev/%s", BLDMS_DEV_NAME);
-    ON_ERROR_LOG_AND_RETURN(devkeeper_format_device(dev_path), -1,
-     "Failed to format device at %s", dev_path);
+    ON_ERROR_LOG_AND_RETURN(devkeeper_format_device(dev_path, BLDMS_BLOCKSIZE_DEFAULT, BLDMS_NBLOCKS_DEFAULT), -1,
+     "Failed to format device at %s\n", dev_path);
     ON_ERROR_LOG_AND_RETURN(devkeeper_create_mountpoint(mount_point_1, 0777), -1, 
-     "Failed to create mount point at %s", mount_point_1);
+     "Failed to create mount point at %s\n", mount_point_1);
         ON_ERROR_LOG_AND_RETURN(devkeeper_create_mountpoint(mount_point_2, 0777), -1, 
-     "Failed to create mount point at %s", mount_point_2);
+     "Failed to create mount point at %s\n", mount_point_2);
     ON_ERROR_LOG_AND_RETURN(devkeeper_mount_device(dev_path, mount_point_1), -1,
-     "Failed to mount device at %s", dev_path);
+     "Failed to mount device at %s\n", dev_path);
     
     if (devkeeper_mount_device(dev_path, mount_point_2) == 0){
-        LOG_ERROR("Mounting device at %s to %s should have failed", dev_path, mount_point_2);
+        LOG_ERROR("Mounting device at %s to %s should have failed\n", dev_path, mount_point_2);
         return -1;
     } 
 

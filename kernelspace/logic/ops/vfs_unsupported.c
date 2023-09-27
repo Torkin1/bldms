@@ -1,6 +1,7 @@
 #include <linux/syscalls.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
+#include <linux/srcu.h>
 
 #include "ops.h"
 #include "usctm/usctm.h"
@@ -20,32 +21,43 @@ __SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
 
     int invalidate_result = 0;
     int res;
+    struct bldms_block *block;
+    
+    // cannot op on reserved blocks
+    bldms_abort_op_if(offset < b_layer->start_data_index, "%s: invalid offset %d\n",
+     __func__, offset);
     
     bldms_block_layer_use(b_layer);
-    
-    res = bldms_start_op_on_block(b_layer, offset);
+    bldms_start_write(b_layer);
+
+    // reads block state
+    block = bldms_block_alloc(b_layer->block_size);
+    block->header.index = offset;
+    res = bldms_move_block(b_layer, block, READ);
     if (res < 0){
-        pr_err("%s: failed to start op on block %d\n", __func__, offset);
-        return -1;
+        pr_err("%s: failed to read block %d from device\n", __func__, offset);
+        invalidate_result = -1;
+        goto invalidate_data_exit;
     }
-    
+
     // can't invalidate a block twice
-    if (!bldms_block_contains_valid_data(b_layer, offset)){
+    if (!bldms_block_contains_valid_data(b_layer, block)){
         pr_err("%s: block %d contains no valid data\n", __func__, offset);
         invalidate_result = -ENODATA;
         goto invalidate_data_exit;
     }
-
-    // release block
-    res = bldms_invalidate_block(b_layer, offset);
+    bldms_invalidate_block(b_layer, block);
+    
+    // propagate updates to device
+    res = bldms_move_block(b_layer, block, WRITE);
     if (res < 0){
-        pr_err("%s: failed to invalidate block %d\n", __func__, offset);
+        pr_err("%s: failed to write block %d to device\n", __func__, offset);
         invalidate_result = -1;
         goto invalidate_data_exit;
     }
 
 invalidate_data_exit:
-    bldms_end_op_on_block(b_layer, offset);
+    bldms_end_write(b_layer);
     bldms_block_layer_put(b_layer);
     return invalidate_result;
 }
@@ -67,28 +79,34 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, __user char *, destination, size_t,
     struct bldms_block *block;
     int res;
     u8 *buffer;
+    int reader_id;
 
     bldms_block_layer_use(b_layer);
     
     buffer = kzalloc(b_layer->block_size, GFP_KERNEL);
-    
-    res = bldms_start_op_on_block(b_layer, offset);
-    if (res < 0){
-        pr_err("%s: failed to start op on block %d\n", __func__, offset);
-        return -1;
-    }
-    
-    // check if block contains valid data
-    if (!bldms_block_contains_valid_data(b_layer, offset)){
-        pr_err("%s: block %d contains no valid data\n", __func__, offset);
-        data_copied = -ENODATA;
-        goto get_data_exit_no_block_alloc;
-    }
-    
+
+    bldms_start_read(b_layer, &reader_id);
+
+    pr_debug("%s: get called on block %d\n", __func__, offset);
+
     // init block which will hold deserialized data
     block = bldms_block_alloc(b_layer->block_size);
     block->header.index = offset;
+        
+    res = bldms_move_block(b_layer, block, READ);
+    if (res < 0){
+        pr_err("%s: failed to read block %d from device\n", __func__, offset);
+        data_copied = -1;
+        goto get_data_exit;
+    }
 
+    // check if block contains valid data
+    if (!bldms_block_contains_valid_data(b_layer, block)){
+        pr_err("%s: block %d contains no valid data\n", __func__, offset);
+        data_copied = -ENODATA;
+        goto get_data_exit;
+    }
+    
     // copy data from block to destination
     res = bldms_move_block(b_layer, block, READ);
     if (res < 0){
@@ -105,11 +123,11 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, __user char *, destination, size_t,
     }
 
 get_data_exit:
+    bldms_end_read(b_layer, reader_id);
     kfree(buffer);    
     bldms_block_free(block);
-get_data_exit_no_block_alloc:
-    bldms_end_op_on_block(b_layer, offset);
     bldms_block_layer_put(b_layer);
+    pr_debug("%s: get returning %d\n", __func__, data_copied);
     return data_copied;
 
 }
@@ -133,31 +151,25 @@ __SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
     u8 *buffer;
 
     bldms_block_layer_use(b_layer);
-
     buffer = kzalloc(size, GFP_KERNEL);
+    bldms_start_write(b_layer);
     
-    // obtain a block index by preparing a free block in device for writing
-    block_index = bldms_prepare_write_on_block_any(b_layer);
-    if (block_index < 0){
-        pr_err("%s: failed to reserve block\n", __func__);
-        return -ENOMEM;
+    pr_debug("%s: put called", __func__);
+    
+    // obtain a free block
+    res = bldms_get_free_block_any_index(b_layer, &block);
+    if (block->header.index < 0){
+        pr_err("%s: no free blocks available\n", __func__);
+        block_index = -ENOMEM;
+        goto put_data_exit;
     }
 
-    res = bldms_start_op_on_block(b_layer, block_index);
-    if (res < 0){
-        pr_err("%s: failed to start op on block %d\n", __func__, block_index);
-        bldms_undo_write_on_block(b_layer, block_index);
-        return -1;
-    }
-
-    // allocate block struct with given index
-    block = bldms_block_alloc(b_layer->block_size);
-    block ->header.index = block_index;
+    pr_debug("%s: block index is %d, block cap is %lu\n", __func__, block->header.index,
+     block->header.data_capacity);
 
     // write data to block
     if (copy_from_user(buffer, source, size)){
         pr_err("%s: failed to copy data from user\n", __func__);
-        bldms_undo_write_on_block(b_layer, block_index);
         block_index = -1;
         goto put_data_exit;
     }
@@ -165,26 +177,32 @@ __SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
     if(copied_size != size){
         pr_err("%s: cannot fit source data of size %lu in a block of size %lu without\
          truncating\n", __func__, size, block->header.data_capacity);
-        bldms_undo_write_on_block(b_layer, block_index);
         block_index = -1;
         goto put_data_exit;
     }
 
     // write block to device
     res = bldms_move_block(b_layer, block, WRITE);
+    pr_debug("%s: result of block move is %d\n", __func__, res);
     if (res < 0){
         pr_err("%s: failed to write block %d to device\n", __func__, block_index);
-        bldms_undo_write_on_block(b_layer, block_index);
         block_index = -1;
         goto put_data_exit;
     }    
-    bldms_commit_write_on_block(b_layer, block_index);
+    bldms_validate_block(b_layer, block);
+    if (block->header.index < 0){
+        pr_err("%s: failed to validate block %d\n", __func__, block_index);
+        block_index = -1;
+        goto put_data_exit;
+    }
+    block_index = block->header.index;
     
 put_data_exit:
     kfree(buffer);
-    bldms_end_op_on_block(b_layer, block_index);
+    bldms_end_write(b_layer);
     bldms_block_layer_put(b_layer);
     bldms_block_free(block);
+    pr_debug("%s: put returning %d\n", __func__, block_index);
     return block_index;
 }
 

@@ -1,7 +1,7 @@
 #ifndef OPS_H_INCLUDED
 #define OPS_H_INCLUDED
 
-#include "vfs_supported.h"
+//#include "vfs_supported.h"
 #include "vfs_unsupported.h"
 #include "block_layer/block_layer.h"
 

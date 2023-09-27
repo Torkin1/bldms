@@ -61,6 +61,11 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     }
     sb_disk = (struct singlefilefs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
+    // TODO: read starting blocks for free and used lists from superblock
+    b_layer.free_blocks.first_bi = 2;
+    b_layer.free_blocks.last_bi = BLDMS_NBLOCKS_DEFAULT - 1;
+    b_layer.used_blocks.first_bi = -1;
+    b_layer.used_blocks.last_bi = -1;
     brelse(bh); // discards sb_disk
 
     pr_debug("%s: singlefilefs superblock loaded: magic is %llx\n",__func__, magic);
@@ -175,8 +180,7 @@ int singlefilefs_init(size_t block_size, int nr_blocks) {
     bldms_block_layer_init(&b_layer, block_size, nr_blocks);
 
     // reserves superblock and inode blocks
-    bldms_reserve_block(&b_layer, SINGLEFILEFS_SB_BLOCK_NUMBER);
-    bldms_reserve_block(&b_layer, SINGLEFILEFS_INODES_BLOCK_NUMBER);
+    bldms_reserve_first_blocks(&b_layer, 2);
 
     // initializes vfs unsupported operations
     if (bldms_vfs_unsupported_init(&b_layer) < 0){

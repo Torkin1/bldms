@@ -48,7 +48,7 @@ struct singlefilefs_dir_record {
 //superblock definition on disk
 struct singlefilefs_sb_info {
 	uint64_t magic;	// magic number to recognize the fs
-
+	
 };
 
 #endif

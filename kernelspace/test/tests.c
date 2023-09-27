@@ -50,14 +50,15 @@ static int test_block_serialize(void){
 
 static int test_block_move(void){
     
-    struct bldms_block_layer b_layer;
+    struct bldms_block_layer *b_layer;
     struct bldms_block *block_expected;
     struct bldms_block *block_actual;
     const int block_index = 2;
     const int nr_blocks = 3;
     int res = 0;
 
-    bldms_block_layer_init(&b_layer, TEST_BLOCK_SIZE, nr_blocks);
+    b_layer = kzalloc(sizeof(struct bldms_block_layer), GFP_KERNEL);
+    bldms_block_layer_init(b_layer, TEST_BLOCK_SIZE, nr_blocks);
 
     block_expected = bldms_block_alloc(TEST_BLOCK_SIZE);
     block_actual = bldms_block_alloc(TEST_BLOCK_SIZE);
@@ -68,17 +69,9 @@ static int test_block_move(void){
     block_actual->header.index = block_index;
 
     pr_debug("%s: test blocks prepared\n", __func__);
-    
-    if (bldms_blocks_get_entry_from_block_index(b_layer.free_blocks, block_index) == NULL){
-        pr_err("%s: failed to get entry for block %d in free blocks list\n",
-         __func__, block_index);
-        res = -1;
-        goto test_block_move_exit; 
-    }
-    pr_debug("%s: got entry for block %d in used blocks list\n", __func__, block_index);
-    
+        
     // test write to block 0
-    if (bldms_move_block(&b_layer, block_expected, WRITE)){
+    if (bldms_move_block(b_layer, block_expected, WRITE)){
         pr_err("%s: failed to write block\n", __func__);
         res = -1;
         goto test_block_move_exit;
@@ -86,7 +79,7 @@ static int test_block_move(void){
     pr_debug("%s: wrote block %d\n", __func__, block_index);
 
     // test read of block 0
-    if (bldms_move_block(&b_layer, block_actual, READ)){
+    if (bldms_move_block(b_layer, block_actual, READ)){
         pr_err("%s: failed to read block\n", __func__);
         res = -1;
         goto test_block_move_exit;
@@ -101,6 +94,7 @@ static int test_block_move(void){
     }
 
 test_block_move_exit:
+    kfree(b_layer);
     bldms_block_free(block_expected);
     bldms_block_free(block_actual);
     return res;   

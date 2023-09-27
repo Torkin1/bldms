@@ -52,7 +52,8 @@ int bldms_block_memset(struct bldms_block *block, int value, size_t size){
 
 static size_t bldms_calc_block_header_size(struct bldms_block_header header){
     return sizeof(header.data_size) + sizeof(header.header_size) + 
-        sizeof(header.index) + sizeof(header.data_capacity);
+        sizeof(header.index) + sizeof(header.data_capacity) +
+        sizeof(header.state) + sizeof(header.next) + sizeof(header.prev);
 }
 
 /**
@@ -76,6 +77,9 @@ struct bldms_block *bldms_block_alloc(size_t block_size){
         kfree(block);
         return NULL;
     }
+    block->header.state = BLDMS_BLOCK_STATE_NR_STATES;
+    block->header.next = -1;
+    block->header.prev = -1;
 
     return block;
 }

@@ -11,7 +11,7 @@
 
 #include "singlefilefs.h"
 #include "block_layer/block_layer.h"
-#include "ops/vfs_supported.h"
+//#include "ops/vfs_supported.h"
 
 ssize_t onefilefs_write(struct file *f, const char __user *, size_t, loff_t *){
 
@@ -43,7 +43,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     struct inode * the_inode = filp->f_inode;
     uint64_t file_size = the_inode->i_size;
     struct bldms_block_layer *b_layer = the_inode->i_sb->s_fs_info;
-    ssize_t read;
+    ssize_t read = 0;
     char *my_buffer;
     
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",SINGLEFILEFS_NAME, len, *off, file_size);
@@ -65,7 +65,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //if (*off >= file_size || *off < 0) return 0;
     if (*off < 0) return 0;
         
-    read = bldms_read(b_layer, my_buffer, len, off);
+    //read = bldms_read(b_layer, my_buffer, len, off);
 
     mutex_unlock(&filp ->f_pos_lock);
 

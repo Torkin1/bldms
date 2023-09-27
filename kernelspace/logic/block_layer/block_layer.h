@@ -5,9 +5,15 @@
 #include <linux/completion.h>
 #include <linux/fs.h>
 #include <linux/atomic.h>
+#include <linux/srcu.h>
 
 #include "block.h"
-#include "blocks_list.h"
+
+struct bldms_blocks_head{
+
+    int first_bi;
+    int last_bi;
+};
 
 struct bldms_block_layer {
 
@@ -17,47 +23,11 @@ struct bldms_block_layer {
     atomic_t users; // number of users of the block layer
     size_t block_size; // size of a block in bytes
     int nr_blocks; // number of blocks in the device
-    struct bldms_blocks_list *free_blocks; // list of blocks containing invalid data
-    struct bldms_blocks_list *used_blocks; // list of blocks containing valid data
-    /**
-     * Userspace cannot invalidate or put data in blocks of reserved list
-    */
-    struct bldms_blocks_list *reserved_blocks; 
-    /**
-      * There is a possible race condition between get_data() and put_data():
-      * get_data():                 put_data():
-      *                             reserve_block()
-      * block_contains_valid_data()
-      * read_block()
-      *                             write_block()
-      * 
-      * get_data() returns invalidated data. This happens because the choosing of the block
-      * and the actual writing are not done atomically togheter.
-      * We can solve this by putting entries
-      * of blocks to be written in a temporary list and move it to the used_blocks
-      * only when we finish to write the block.
-     * 
-    */
-    struct bldms_blocks_list *prepared_for_write_blocks;
-    
-    /**
-     * Another race condition can be this:
-     * get_data():                  invalidate_data():
-     * block_contains_valid_data()       
-     *                              block_contains_valid_data()
-     *                              invalidate_block()
-     * read_block()
-     * 
-     * get_data() returns invalidated data. This could be solved using the same
-     * approach as in_use_by_write_blocks, but it would mean that readers must
-     * wait each one every time there are conflicting ops on same block. This
-     * could negate the perfomance improvements brought by using RCU lists.
-     * Here another approach is used: keep an array of copletion vars to signal
-     * whenever an op is currently in progress on a block.
-     * For an op to start accessing the block, it must first wait that the
-     * currenttly running op on the block finishes, if there is one.
-    */
-    struct completion *in_progress_ops;
+    struct bldms_blocks_head free_blocks; // list of blocks containing invalid data
+    struct bldms_blocks_head used_blocks; // list of blocks containing valid data
+    struct srcu_struct srcu;
+    struct completion in_progress_write;
+    int start_data_index; // index of the first block containing data 
 };
 
 int bldms_block_layer_init(struct bldms_block_layer *b_layer,
@@ -68,18 +38,23 @@ int bldms_block_layer_register_sb(struct bldms_block_layer *b_layer,
 
 int bldms_move_block(struct bldms_block_layer *b_layer,
  struct bldms_block *block, int direction);
-bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer,
- int block_index);
+bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer, 
+ struct bldms_block *block);
+bool bldms_block_contains_invalid_data(struct bldms_block_layer *b_layer, 
+ struct bldms_block *block);
 int bldms_get_valid_block_indexes(struct bldms_block_layer *b_layer,
  int *block_indexes, int max_blocks);
-int bldms_prepare_write_on_block(struct bldms_block_layer *b_layer, int block_index);
-int bldms_prepare_write_on_block_any(struct bldms_block_layer *b_layer);
-int bldms_commit_write_on_block(struct bldms_block_layer *b_layer, int block_index);
-int bldms_undo_write_on_block(struct bldms_block_layer *b_layer, int block_index);
-int bldms_start_op_on_block(struct bldms_block_layer *b_layer, int block_index);
-void bldms_end_op_on_block(struct bldms_block_layer *b_layer, int block_index);
-int bldms_invalidate_block(struct bldms_block_layer *b_layer, int block_index);
-int bldms_reserve_block(struct bldms_block_layer *b_layer, int block_index);
+void bldms_reserve_first_blocks(struct bldms_block_layer *b_layer, int nr_blocks);
+void bldms_start_read(struct bldms_block_layer *b_layer, int *reader_id);
+void bldms_end_read(struct bldms_block_layer *b_layer, int reader_id);
+void bldms_start_write(struct bldms_block_layer *b_layer);
+void bldms_end_write(struct bldms_block_layer *b_layer);
+int bldms_invalidate_block(struct bldms_block_layer *b_layer,
+ struct bldms_block *block);
+int bldms_validate_block(struct bldms_block_layer *b_layer,
+ struct bldms_block *block);
+int bldms_get_free_block_any_index(struct bldms_block_layer *b_layer, 
+ struct bldms_block **block);
 
 #define bldms_if_mounted(b_layer__, do_){\
     spin_lock(&b_layer__->mounted_lock);\
