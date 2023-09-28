@@ -83,10 +83,6 @@ void bldms_end_write(struct bldms_block_layer *b_layer){
     complete(&b_layer->in_progress_write);
 }
 
-#define bldms_blocks_foreach_index(block_)\
-    for (; block_->header.index != -1;\
-     block_->header.index = block_->header.next)
-
 struct bldms_block *bldms_blocks_get_block(struct bldms_block_layer *b_layer,
  struct bldms_blocks_head *list, int block_index){
 
@@ -148,91 +144,157 @@ int bldms_get_free_block_any_index(struct bldms_block_layer *b_layer,
 }
 
 /**
- * Moves one entry from a blocks list after another one;
- * @return -1 if error, else the index of the moved block
+ * Moves one entry from a blocks list at the end of another one, performing needed
+ * updates to blocks in device.
+ * @param b_layer: the block layer
+ * @param to: the receiving list
+ * @param from: the donating list
+ * @param block: the block to move, must be in the receiving list 
+ * @return -1 if error, else 0
 */
 int bldms_blocks_move_block(struct bldms_block_layer *b_layer, 
 struct bldms_blocks_head *to, struct bldms_blocks_head *from,
 struct bldms_block *block){
 
     int res = 0;
-    struct bldms_block *b_prev, *b_next, *to_last;
+    struct bldms_block *from_block_prev, *from_block_next, *to_last_old;
+    int block_old_prev_i, block_old_next_i;
+
+    might_sleep();
+
+    block_old_prev_i = block->header.prev;
+    block_old_next_i = block->header.next;
+    pr_debug("%s: moving block %d has prev %d and next %d\n", __func__,
+     block->header.index, block->header.prev, block->header.next);
 
     /**
      * If there is a previous block, we update their next pointer, else
      * we update the first_bi pointer of the from list
     */
     if (block->header.prev != -1){
-        b_prev = bldms_block_alloc(b_layer ->block_size);
-        b_prev ->header.index = block ->header.prev;
-        res = bldms_move_block(b_layer, b_prev, READ);
+        from_block_prev = bldms_block_alloc(b_layer ->block_size);
+        from_block_prev ->header.index = block ->header.prev;
+        res = bldms_move_block(b_layer, from_block_prev, READ);
         if (res < 0){
             pr_err("%s: failed to read block %d, previous of %d\n", __func__,
              block->header.prev, block->header.index);
+            bldms_block_free(from_block_prev);
+            return -1;
         }
-        b_prev ->header.next = block ->header.next;
-        res = bldms_move_block(b_layer, b_prev, WRITE);
+        from_block_prev ->header.next = block ->header.next;
+        pr_debug("%s: updating next of from block prev %d to %d\n", __func__,
+         from_block_prev->header.index, block->header.next);
+        res = bldms_move_block(b_layer, from_block_prev, WRITE);
         if (res < 0){
             pr_err("%s: failed to write block %d, previous of %d\n", __func__,
              block->header.prev, block->header.index);
+            bldms_block_free(from_block_prev);
+            return -1;
         }
-        bldms_block_free(b_prev);
-    }
-    else {
-        from ->first_bi = block ->header.next;
+        bldms_block_free(from_block_prev);
     }
     /**
      * If there is a next block, we update their prev pointer, else
      * we update the last_bi pointer of the from list
     */
     if (block->header.next != -1){
-        b_next = bldms_block_alloc(b_layer ->block_size);
-        b_next ->header.index = block ->header.next;
-        res = bldms_move_block(b_layer, b_next, READ);
+        from_block_next = bldms_block_alloc(b_layer ->block_size);
+        from_block_next ->header.index = block ->header.next;
+        res = bldms_move_block(b_layer, from_block_next, READ);
         if (res < 0){
             pr_err("%s: failed to read block %d, next of %d\n", __func__,
              block->header.next, block->header.index);
+            bldms_block_free(from_block_next);
+            return -1;
         }
-        b_next ->header.prev = block ->header.prev;
-        bldms_move_block(b_layer, b_next, WRITE);
+        from_block_next ->header.prev = block ->header.prev;
+        pr_debug("%s: updating prev of from block next %d to %d\n", __func__,
+         from_block_next->header.index, block->header.prev);
+        bldms_move_block(b_layer, from_block_next, WRITE);
         if (res < 0){
             pr_err("%s: failed to write block %d, next of %d\n", __func__,
              block->header.next, block->header.index);
+            bldms_block_free(from_block_next);
+            return -1;
         }
-        bldms_block_free(b_next);
-    }
-    else {
-        from ->last_bi = block ->header.prev;
+        bldms_block_free(from_block_next);
     }
     /**
-     * give last readers time to exit from block to move
+     * Give remaining readers time to exit from block to move.
+     * NOTE: we cannot use a srcu callback since it is stated that it cannot block, but
+     * we must update the block to move which is a blocking operation
     */
     synchronize_srcu(&b_layer->srcu);
     /**
-     * Append block to list
+     * Append block to receiving list
     */
     if (to ->last_bi == -1){
-        to ->first_bi = block ->header.index;
-        to ->last_bi = block ->header.index;
+        // we put the block at the beginning of the receiving list
+        block ->header.prev = -1;
+        pr_debug("%s: block %d is the first of to list\n", __func__,
+         block->header.index);
     }
     else {
-        to_last = bldms_block_alloc(b_layer ->block_size);
-        to_last ->header.index = to ->last_bi;
-        res = bldms_move_block(b_layer, to_last, READ);
+        // we put the block after the last block of receiving list
+        to_last_old = bldms_block_alloc(b_layer ->block_size);
+        to_last_old ->header.index = to ->last_bi;
+        pr_debug("%s: to last old has index %d and next %d\n", __func__,
+         to_last_old->header.index, to_last_old->header.next);
+        res = bldms_move_block(b_layer, to_last_old, READ);
         if (res < 0){
             pr_err("%s: failed to read block %d, last of to list\n", __func__,
             to->last_bi);
+            bldms_block_free(to_last_old);
+            return -1;
         }
-        to_last ->header.next = block ->header.index;
-        block ->header.prev = to_last ->header.index;
-        block ->header.next = -1;
-        res = bldms_move_block(b_layer, to_last, WRITE);
+        block ->header.prev = to_last_old ->header.index;
+    }
+    block ->header.next = -1;
+    pr_debug("%s: moved block %d has prev %d next %d\n", __func__,
+     block->header.index, block->header.prev, block->header.next);
+    // we publish block updates on disk
+    res = bldms_move_block(b_layer, block, WRITE);
+    if (res < 0){
+        pr_err("%s: failed to write block to move %d\n", __func__,
+        block->header.index);
+        return -1;
+    }
+
+    // we update the donating list head if the moving block is the first of its list
+    if(from->first_bi == block->header.index){
+        from->first_bi = block_old_next_i;
+    }
+    if(from->last_bi == block->header.index){
+        from->last_bi = block_old_prev_i;
+    }
+
+    // we update the receiving list head and last block, if there is one
+    if(to->last_bi == -1){
+        to ->first_bi = block ->header.index;
+        to ->last_bi = block ->header.index;
+    }
+    else{
+        to_last_old ->header.next = block ->header.index;
+        // after the following write, new readers can land on the block to move
+        // by traversing the receiving list
+        res = bldms_move_block(b_layer, to_last_old, WRITE);
         if (res < 0){
             pr_err("%s: failed to write block %d, last of to list\n", __func__,
             to->last_bi);
+            bldms_block_free(to_last_old);
+            return -1;
         }
-        bldms_block_free(to_last);
+        to ->last_bi = block ->header.index;
+        pr_debug("%s: to_last_old block %d has prev %d and next %d\n", __func__,
+         to_last_old->header.index, to_last_old->header.prev, to_last_old->header.next);
+
     }
+    pr_debug("%s: from list start and end: %d %d\n", __func__, from->first_bi,
+     from->last_bi);
+    pr_debug("%s: to list start and end: %d %d\n", __func__, to->first_bi,
+        to->last_bi);
+
+    bldms_block_free(to_last_old);
 
     return res;
 }
@@ -250,7 +312,7 @@ int bldms_blocks_move_block_index(struct bldms_block_layer *b_layer,
 }
 
 /**
- * Marks the desired block as free to use
+ * Marks the desired block as free to use, updating block in device
 */
 int bldms_invalidate_block(struct bldms_block_layer *b_layer, struct bldms_block *block){
     int res = 0;
@@ -261,6 +323,10 @@ int bldms_invalidate_block(struct bldms_block_layer *b_layer, struct bldms_block
 
     return res;
 }
+
+/**
+ * Marks the desired block as containing valid data, updating block in device
+*/
 int bldms_validate_block(struct bldms_block_layer *b_layer,
  struct bldms_block *block){
 

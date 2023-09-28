@@ -85,6 +85,8 @@ struct bldms_block *bldms_block_alloc(size_t block_size){
 }
 
 void bldms_block_free(struct bldms_block *block){
-    kfree(block->data);
-    kfree(block);
+    if (block && block->data)
+        kfree(block->data);
+    if(block)
+        kfree(block);
 }

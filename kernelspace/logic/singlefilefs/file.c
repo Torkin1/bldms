@@ -11,7 +11,7 @@
 
 #include "singlefilefs.h"
 #include "block_layer/block_layer.h"
-//#include "ops/vfs_supported.h"
+#include "ops/vfs_supported.h"
 
 ssize_t onefilefs_write(struct file *f, const char __user *, size_t, loff_t *){
 
@@ -65,7 +65,7 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     //if (*off >= file_size || *off < 0) return 0;
     if (*off < 0) return 0;
         
-    //read = bldms_read(b_layer, my_buffer, len, off);
+    read = bldms_read(b_layer, my_buffer, len, off);
 
     mutex_unlock(&filp ->f_pos_lock);
 

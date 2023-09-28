@@ -9,11 +9,26 @@
 
 #include "block.h"
 
+/**
+ * Blocks are double-linked to each other according to their data state
+ * (valid or invalid). This struct is used to keep track of the first and last
+ * block in each list.
+ * 
+ * To traverse the list, one can use the bldms_blocks_foreach_index() macro to iterate
+ * over the indexes, combined with reading the block at the current index from the 
+ * device with bldms_move_block().
+ * 
+ * Examples can be found in bldms_read() and invalidate_data() implementations. 
+*/
 struct bldms_blocks_head{
 
     int first_bi;
     int last_bi;
 };
+
+#define bldms_blocks_foreach_index(block_)\
+    for (; block_->header.index != -1;\
+     block_->header.index = block_->header.next)
 
 struct bldms_block_layer {
 
@@ -40,10 +55,6 @@ int bldms_move_block(struct bldms_block_layer *b_layer,
  struct bldms_block *block, int direction);
 bool bldms_block_contains_valid_data(struct bldms_block_layer *b_layer, 
  struct bldms_block *block);
-bool bldms_block_contains_invalid_data(struct bldms_block_layer *b_layer, 
- struct bldms_block *block);
-int bldms_get_valid_block_indexes(struct bldms_block_layer *b_layer,
- int *block_indexes, int max_blocks);
 void bldms_reserve_first_blocks(struct bldms_block_layer *b_layer, int nr_blocks);
 void bldms_start_read(struct bldms_block_layer *b_layer, int *reader_id);
 void bldms_end_read(struct bldms_block_layer *b_layer, int reader_id);
@@ -67,8 +78,7 @@ int bldms_get_free_block_any_index(struct bldms_block_layer *b_layer,
     spin_unlock(&b_layer__->mounted_lock);\
 }
 
-#define bldms_block_layer_use(b_layer_) bldms_if_mounted(b_layer_, atomic_add(1, &b_layer_->users));\
-
+#define bldms_block_layer_use(b_layer_) bldms_if_mounted(b_layer_, atomic_add(1, &b_layer_->users));
 
 void bldms_block_layer_put(struct bldms_block_layer *b_layer_);
 

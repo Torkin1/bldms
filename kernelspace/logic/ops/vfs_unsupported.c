@@ -46,15 +46,13 @@ __SYSCALL_DEFINEx(1, _invalidate_data, int, offset){
         invalidate_result = -ENODATA;
         goto invalidate_data_exit;
     }
-    bldms_invalidate_block(b_layer, block);
-    
-    // propagate updates to device
-    res = bldms_move_block(b_layer, block, WRITE);
-    if (res < 0){
-        pr_err("%s: failed to write block %d to device\n", __func__, offset);
+    res = bldms_invalidate_block(b_layer, block);
+    if(res < 0){
+        pr_err("%s: failed to invalidate block %d\n", __func__, offset);
         invalidate_result = -1;
         goto invalidate_data_exit;
     }
+    
 
 invalidate_data_exit:
     bldms_end_write(b_layer);
@@ -180,21 +178,13 @@ __SYSCALL_DEFINEx(2, _put_data, __user char *, source, size_t, size){
         block_index = -1;
         goto put_data_exit;
     }
-
-    // write block to device
-    res = bldms_move_block(b_layer, block, WRITE);
-    pr_debug("%s: result of block move is %d\n", __func__, res);
+    res = bldms_validate_block(b_layer, block);
     if (res < 0){
-        pr_err("%s: failed to write block %d to device\n", __func__, block_index);
-        block_index = -1;
-        goto put_data_exit;
-    }    
-    bldms_validate_block(b_layer, block);
-    if (block->header.index < 0){
-        pr_err("%s: failed to validate block %d\n", __func__, block_index);
+        pr_err("%s: failed to validate block %d\n", __func__, block->header.index);
         block_index = -1;
         goto put_data_exit;
     }
+
     block_index = block->header.index;
     
 put_data_exit:
