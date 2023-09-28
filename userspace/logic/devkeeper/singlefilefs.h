@@ -48,6 +48,11 @@ struct singlefilefs_dir_record {
 //superblock definition on disk
 struct singlefilefs_sb_info {
 	uint64_t magic;	// magic number to recognize the fs
+	int nr_blocks;
+	int first_free_bi;
+	int last_free_bi;
+	int first_used_bi;
+	int last_used_bi;
 	
 };
 

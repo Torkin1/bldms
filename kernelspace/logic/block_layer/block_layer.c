@@ -81,6 +81,7 @@ void bldms_start_write(struct bldms_block_layer *b_layer){
 void bldms_end_write(struct bldms_block_layer *b_layer){
 
     complete(&b_layer->in_progress_write);
+    b_layer->save_state(b_layer);
 }
 
 struct bldms_block *bldms_blocks_get_block(struct bldms_block_layer *b_layer,

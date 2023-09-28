@@ -29,6 +29,11 @@ int devkeeper_format_device(char * dev_path, int block_size, int nr_blocks){
     b.data = malloc(1);
     
     sb_info.magic = SINGLEFILEFS_MAGIC;
+    sb_info.nr_blocks = nr_blocks;
+    sb_info.first_free_bi = 2;
+    sb_info.last_free_bi = nr_blocks - 1;
+    sb_info.first_used_bi = -1;
+    sb_info.last_used_bi = -1;
     
     // prepare disk
     fd = open(dev_path, O_TRUNC | O_WRONLY);

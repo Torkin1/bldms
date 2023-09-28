@@ -42,7 +42,12 @@ struct bldms_block_layer {
     struct bldms_blocks_head used_blocks; // list of blocks containing valid data
     struct srcu_struct srcu;
     struct completion in_progress_write;
-    int start_data_index; // index of the first block containing data 
+    int start_data_index; // index of the first block containing data
+    /**
+     * Saves b_layer state to disk.
+     * Implementation is chosen by the fs owning the block layer.
+    */
+    int(*save_state)(struct bldms_block_layer *b_layer); 
 };
 
 int bldms_block_layer_init(struct bldms_block_layer *b_layer,

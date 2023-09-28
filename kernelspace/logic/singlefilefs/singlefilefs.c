@@ -61,11 +61,25 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     }
     sb_disk = (struct singlefilefs_sb_info *)bh->b_data;
     magic = sb_disk->magic;
-    // TODO: read starting blocks for free and used lists from superblock
-    b_layer.free_blocks.first_bi = 2;
-    b_layer.free_blocks.last_bi = BLDMS_NBLOCKS_DEFAULT - 1;
-    b_layer.used_blocks.first_bi = -1;
-    b_layer.used_blocks.last_bi = -1;
+
+    //check on the expected magic number
+    if(magic != sb->s_magic){
+	    pr_err("%s: magic number mismatch: %llu != %lu\n",__func__, magic, sb->s_magic);
+        brelse(bh);
+        return -EBADF;
+    }
+
+    if(sb_disk->nr_blocks > BLDMS_NBLOCKS){
+        pr_err("%s: too many blocks in the device: %d > %d\n",__func__, sb_disk->nr_blocks, BLDMS_NBLOCKS);
+        brelse(bh);
+        return -EBADF;
+    }
+
+    b_layer.nr_blocks = sb_disk->nr_blocks;
+    b_layer.free_blocks.first_bi = sb_disk->first_free_bi;//2;
+    b_layer.free_blocks.last_bi = sb_disk->last_free_bi;//BLDMS_NBLOCKS_DEFAULT - 1;
+    b_layer.used_blocks.first_bi = sb_disk->first_used_bi; //-1;
+    b_layer.used_blocks.last_bi = sb_disk->last_used_bi; //-1;
     brelse(bh); // discards sb_disk
 
     pr_debug("%s: singlefilefs superblock loaded: magic is %llx\n",__func__, magic);
@@ -120,6 +134,36 @@ int singlefilefs_fill_super(struct super_block *sb, void *data, int silent) {
     return 0;
 }
 
+int singlefilefs_blayer_save_state(struct bldms_block_layer *b_layer){
+    
+    struct buffer_head *sb_disk_bh;
+    struct singlefilefs_sb_info *sb_disk;
+
+    might_sleep();
+
+    if(!b_layer ->sb){
+        pr_err("%s: error saving block layer state: superblock not found\n",__func__);
+        return -EIO;
+    }
+
+    sb_disk_bh = sb_bread(b_layer->sb, SINGLEFILEFS_SB_BLOCK_NUMBER);
+    if(!sb_disk_bh){
+        pr_err("%s: error reading superblock from disk\n",__func__);
+        return -EIO;
+    }
+    sb_disk = (struct singlefilefs_sb_info *)sb_disk_bh->b_data;
+
+    sb_disk->first_free_bi = b_layer->free_blocks.first_bi;
+    sb_disk->last_free_bi = b_layer->free_blocks.last_bi;
+    sb_disk->first_used_bi = b_layer->used_blocks.first_bi;
+    sb_disk->last_used_bi = b_layer->used_blocks.last_bi;
+
+    mark_buffer_dirty(sb_disk_bh);
+    brelse(sb_disk_bh);
+    
+    return 0;
+}
+
 static void singlefilefs_kill_superblock(struct super_block *s) {
     
     might_sleep();
@@ -130,6 +174,11 @@ static void singlefilefs_kill_superblock(struct super_block *s) {
 
     // wait for all operations on the device to finish
     wait_event_interruptible(unmount_queue, atomic_read(&b_layer.users) == 0);
+
+    // save b_layer state to device
+    if(b_layer.save_state(&b_layer)){
+        pr_err("%s: error saving block layer state\n",__func__);
+    }
     
     bldms_block_layer_clean(&b_layer);
     kill_block_super(s);
@@ -178,6 +227,7 @@ int singlefilefs_init(size_t block_size, int nr_blocks) {
 
     //init block layer
     bldms_block_layer_init(&b_layer, block_size, nr_blocks);
+    b_layer.save_state = singlefilefs_blayer_save_state;
 
     // reserves superblock and inode blocks
     bldms_reserve_first_blocks(&b_layer, 2);
