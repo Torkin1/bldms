@@ -27,7 +27,7 @@ make -C kernelspace load
 ```
 After loading the module, assuming default values for module params, a new block device will appear at `/dev/bldmsdisk`. Users can format and mount such device with bldms using the functions declared in `userspace/logic/devkeeper/devkeeper.h`.
 
-Note that there is no strict need to use such device as the bldms support, although they are encouraged to use it (since I don't want to admit that I wasted my time implementing it lol). Users can use whatever device they want, even a regular file, given that it is correctly formatted using the devkeeper.
+Note that there is no strict need to use such device as the bldms support. Users can use whatever device they want, even a regular file, given that it is correctly formatted using the devkeeper.
 
 Users are expected to build their clients using apis declared in `userspace/logic/api/api.h` if they want to access vfs unsupported operations.
 
