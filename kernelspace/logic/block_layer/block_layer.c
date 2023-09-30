@@ -191,8 +191,7 @@ struct bldms_block *block){
      block->header.index, block->header.prev, block->header.next);
 
     /**
-     * If there is a previous block, we update their next pointer, else
-     * we update the first_bi pointer of the from list
+     * If there is a previous block, we update their next pointer
     */
     if (block->header.prev != -1){
         from_block_prev = bldms_block_alloc(b_layer ->block_size);
@@ -217,8 +216,7 @@ struct bldms_block *block){
         bldms_block_free(from_block_prev);
     }
     /**
-     * If there is a next block, we update their prev pointer, else
-     * we update the last_bi pointer of the from list
+     * If there is a next block, we update their prev pointer
     */
     if (block->header.next != -1){
         from_block_next = bldms_block_alloc(b_layer ->block_size);
