@@ -1,12 +1,31 @@
 #include <linux/types.h>
 #include <linux/minmax.h>
 #include <linux/slab.h>
+#include <linux/fs.h>
 
 #include "vfs_supported.h"
 #include "block_layer/block_layer.h"
 
+struct bldms_read_state *bldms_read_state_alloc(){
+    return kmalloc(sizeof(struct bldms_read_state), GFP_KERNEL);
+}
+
+void bldms_read_state_free(struct bldms_read_state *read_state){
+    kfree(read_state);
+}
+
+void bldms_read_state_init( struct bldms_block_layer *b_layer,
+ struct bldms_read_state *read_state, struct file *filp){
+
+    read_state ->stream_cursor = 0;
+    read_state ->stream_cursor_old = 0;
+    read_state ->off_old = filp ->f_pos;
+    read_state ->filp = filp;
+    read_state ->b_i_start = b_layer->used_blocks.first_bi;
+}
+
 ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
- loff_t *off) {
+ loff_t *off, struct bldms_read_state *read_state) {
     
     ssize_t read;
     loff_t b_start;    // where do we need to start reading data from block
@@ -21,18 +40,33 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     */
     bool first_block_read;
     int reader_idx;
+    int last_valid_block_i;
     
+    b = bldms_block_alloc(b_layer->block_size);
+
+    /**
+     * We can leverage previous state if we are reading from an offset which is equal
+     * or after the saved one.
+     * TODO: implement backward traversing to adjust stream cursors if the new offset
+     * is before the saved one (unlikely case, but can happen indeed)
+    */
+    pr_debug("%s: off: %lld, read_state->off: %lld\n", __func__, *off, read_state->off_old);
+    if(*off < read_state->off_old){
+        pr_debug("%s: obsolete read state, reinitializing\n", __func__);
+        bldms_read_state_init(b_layer, read_state, read_state->filp);
+    }
+    stream_cursor = read_state->stream_cursor;
+    stream_cursor_old = read_state->stream_cursor_old;
+    b->header.index = read_state->b_i_start;
+
     read = 0;
     buf_cursor = buf;
-    stream_cursor = 0;
     first_block_read = false;
 
     bldms_start_read(b_layer, &reader_idx);
 
     // at worst case we need to read nr_blocks block entries
     // (all blocks contain valid data)
-    b = bldms_block_alloc(b_layer->block_size);
-    b->header.index = b_layer->used_blocks.first_bi;
     bldms_blocks_foreach_index(b){
 
         if (read == len) break; // we read all the data requested by the caller
@@ -68,6 +102,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
          * We do not account for state changes happening after the following check
         */
         if(!bldms_block_contains_valid_data(b_layer, b)) continue;
+        last_valid_block_i = b->header.index;
 
         pr_debug("%s: data in block %d is %s\n", __func__, b->header.index,
          (char *)b->data);
@@ -94,7 +129,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
             /**
              * b_data: [--------][---------------][---]
              *                  ^                    ^
-             *                  stream_cursor        *off
+             **                 stream_cursor        *off
              * 
              * we are before the desired stream offset, we skip this valid block
             */
@@ -162,10 +197,19 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     }
     
     /**
-     * We waited the very last moment to update the file seek to keep it consistent
+     * We waited the very last moment to update the read state to keep it consistent
      * in case of errors
     */
-    *off += read; 
+    *off += read;
+    read_state->stream_cursor = stream_cursor;
+    read_state->stream_cursor_old = stream_cursor_old;
+    read_state->off_old = *off;
+    read_state->b_i_start = last_valid_block_i;
+
+    pr_debug("%s: saved read state: stream_cursor: %lld, stream_cursor_old: %lld,\
+     off: %lld, b_i_start: %d\n", __func__, read_state->stream_cursor,
+      read_state->stream_cursor_old, read_state->off_old, read_state->b_i_start);
+
 bldms_read_exit:
     pr_debug("%s: read %ld bytes\n", __func__, read);
     bldms_end_read(b_layer, reader_idx);

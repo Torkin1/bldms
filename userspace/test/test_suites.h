@@ -10,5 +10,6 @@ int test_invalidate();
 int test_devkeeper();
 int test_mount_twice();
 int test_vfs_read();
+int test_vfs_read_stateful();
 
 #endif // TEST_SUITES_H_INCLUDED

@@ -8,7 +8,7 @@
 #include <linux/mutex.h>
 #include <linux/kernel.h>
 #include <linux/uaccess.h>
-
+#include <linux/mutex.h>
 #include "singlefilefs.h"
 #include "block_layer/block_layer.h"
 #include "ops/vfs_supported.h"
@@ -20,20 +20,54 @@ ssize_t onefilefs_write(struct file *f, const char __user *, size_t, loff_t *){
 }
 
 int onefilefs_open(struct inode *inode, struct file *filp){
-    struct bldms_block_layer *b_layer = inode->i_sb->s_fs_info;
+    
+    struct bldms_block_layer *b_layer;
+    struct bldms_read_state *read_state;
+    
+    b_layer = inode->i_sb->s_fs_info;
+    read_state = NULL;
     bldms_block_layer_use(b_layer);
-
     pr_debug("%s: open operation called\n",SINGLEFILEFS_NAME);
+
+    // store the read state in file session if there isn't any assigned yet
+    // and registers the session in the b_layer to make it visible to
+    // invalidate ops
+    if (!filp->private_data){
+        pr_debug("%s: creating read state\n",SINGLEFILEFS_NAME);
+        mutex_lock(&b_layer->read_states.w_lock);
+        read_state = bldms_read_state_alloc();
+        bldms_read_state_init(b_layer, read_state, filp);
+        list_add_tail(&read_state->list_node, &b_layer->read_states.head);
+        mutex_unlock(&b_layer->read_states.w_lock);
+        filp->private_data = (void*)read_state;
+    }
 
     return 0;
     
 }
 
-int onefilefs_release(struct inode *inode, struct file *filp){
-    struct bldms_block_layer *b_layer = inode->i_sb->s_fs_info;
+void onefilefs_release_read_state(struct rcu_head *rcu){
+    struct bldms_read_state *read_state = container_of(rcu, struct bldms_read_state, rcu);
+    bldms_read_state_free(read_state);
+}
 
+int onefilefs_release(struct inode *inode, struct file *filp){
+    struct bldms_block_layer *b_layer;
+    struct bldms_read_state *read_state;
+
+    b_layer = inode->i_sb->s_fs_info;
     bldms_if_mounted(b_layer, bldms_block_layer_put(b_layer));
     pr_debug("%s: release operation called\n",SINGLEFILEFS_NAME);
+    
+    // free the read state after non-blockingly waiting for a grace period
+    // to expire
+    if (filp->private_data){
+        mutex_lock(&b_layer->read_states.w_lock);
+        read_state = (struct bldms_read_state*)filp->private_data;
+        list_del(&read_state->list_node);
+        mutex_unlock(&b_layer->read_states.w_lock);
+        call_srcu(&b_layer->srcu, &read_state->rcu, onefilefs_release_read_state);
+    }
 
     return 0;
 }
@@ -45,6 +79,8 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     struct bldms_block_layer *b_layer = the_inode->i_sb->s_fs_info;
     ssize_t read = 0;
     char *my_buffer;
+    struct bldms_read_state *read_state;
+    int reader_idx;
     
     printk("%s: read operation called with len %ld - and offset %lld (the current file size is %lld)",SINGLEFILEFS_NAME, len, *off, file_size);
 
@@ -55,24 +91,45 @@ ssize_t onefilefs_read(struct file * filp, char __user * buf, size_t len, loff_t
     // corrupt it
     if (mutex_lock_interruptible(&filp ->f_pos_lock)){
         pr_err("%s: interrupted while waiting to lock the file position\n",__func__);
-        bldms_block_layer_put(b_layer);
-        kfree(my_buffer);
-        return -EINTR;
+        read = -EINTR;
+        goto onefilefs_read_exit;
     }
 
     // check if we are reading in range
     // FIXME: use file_size
-    //if (*off >= file_size || *off < 0) return 0;
-    if (*off < 0) return 0;
+    ////if (*off >= file_size || *off < 0) return 0;
+    if (*off < 0) {
+        mutex_unlock(&filp ->f_pos_lock);
+        read = -EINVAL;
+        goto onefilefs_read_exit;
+    }
         
-    read = bldms_read(b_layer, my_buffer, len, off);
+    /**
+     * Perform actual read with corresponding read state
+    */
+    reader_idx = srcu_read_lock(&b_layer->read_states.srcu);
+    // read_state pointer should be safe to dereference until we exit from the reader
+    // critical section
+    read_state = (struct bldms_read_state*)filp->private_data;
+    if (!read_state){
+        pr_err("%s: read state is NULL\n",__func__);
+        read = -EFAULT;
+        goto onefilefs_read_exit;
+    }
+    mutex_lock(&read_state->lock);
+    read = bldms_read(b_layer, my_buffer, len, off, read_state);
+    mutex_unlock(&read_state->lock);
+    srcu_read_unlock(&b_layer->read_states.srcu, reader_idx);
 
     mutex_unlock(&filp ->f_pos_lock);
 
     if (read > 0 && copy_to_user(buf, my_buffer, read)){       
         pr_err("%s: failed to copy data to user\n",__func__);
-        read = -EFAULT;   
+        read = -EFAULT;
+        goto onefilefs_read_exit;   
     }
+
+onefilefs_read_exit:
     kfree(my_buffer);
     return read;
 }

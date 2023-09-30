@@ -5,9 +5,12 @@
 #include <linux/genhd.h>
 #include <linux/vmalloc.h>
 #include <linux/srcu.h>
+#include <linux/mutex.h>
+#include <linux/fs.h>
 
 #include "block_serialization.h"
 #include "block_layer.h"
+#include "ops/vfs_supported.h"
 
 /************** Block layer management **************/
 
@@ -34,6 +37,10 @@ int bldms_block_layer_init(struct bldms_block_layer *b_layer,
     init_completion(&b_layer->in_progress_write);
     complete(&b_layer->in_progress_write);
 
+    INIT_LIST_HEAD(&b_layer->read_states.head);
+    mutex_init(&b_layer->read_states.w_lock);
+    init_srcu_struct(&b_layer->read_states.srcu);
+
     return 0;
 
 }
@@ -52,6 +59,16 @@ int bldms_block_layer_register_sb(struct bldms_block_layer *b_layer,
 
 void bldms_block_layer_clean(struct bldms_block_layer *b_layer){
 
+    struct bldms_read_state *pos;
+    
+    mutex_lock(&b_layer->read_states.w_lock);
+    // we need to free all read states
+    list_for_each_entry(pos, &b_layer->read_states.head, list_node){
+        list_del(&pos->list_node);
+        synchronize_srcu(&b_layer->read_states.srcu);
+        bldms_read_state_free(pos);
+    }
+    mutex_unlock(&b_layer->read_states.w_lock);
 
 }
 
@@ -81,6 +98,11 @@ void bldms_start_write(struct bldms_block_layer *b_layer){
 void bldms_end_write(struct bldms_block_layer *b_layer){
 
     complete(&b_layer->in_progress_write);
+
+    /**
+     * Saving b_layer state to disk at every write guarantees to remember changes
+     * in case of sudden disk unavailability.
+    */
     b_layer->save_state(b_layer);
 }
 
@@ -316,8 +338,40 @@ int bldms_blocks_move_block_index(struct bldms_block_layer *b_layer,
  * Marks the desired block as free to use, updating block in device
 */
 int bldms_invalidate_block(struct bldms_block_layer *b_layer, struct bldms_block *block){
-    int res = 0;
     
+    int res = 0;
+    struct bldms_read_state *cur_read_state;
+    int reader_idx;
+    
+    /**
+     * We need to update states of all sessions of bldms_read() which stream offset
+     * currently points to some data in the block to invalidate.
+     * 
+     * block_data_stream: [-------][xxxxxxxxxxxxxxxxxx][--]
+     *                                  ^             ^
+     *                                  off  -------> stream_cursor
+     * 
+     * If the block containing off is invalidated, we simply progress *off to match
+     * stream_cursor, and we annotate that the block to start the next read is the
+     * next one. In other words, we behave as the last read consumed all data bytes
+     * in the invalidated block.
+    */
+    reader_idx = srcu_read_lock(&b_layer->read_states.srcu);
+    list_for_each_entry(cur_read_state, &b_layer->read_states.head, list_node){
+        mutex_lock(&cur_read_state->lock);
+        if(cur_read_state->b_i_start == block->header.index){
+            mutex_lock(&cur_read_state->filp->f_pos_lock);
+            cur_read_state->filp->f_pos = cur_read_state->stream_cursor;
+            mutex_unlock(&cur_read_state->filp->f_pos_lock);
+            cur_read_state->b_i_start = block->header.next;
+        }
+        mutex_unlock(&cur_read_state->lock);
+    }
+    srcu_read_unlock(&b_layer->read_states.srcu, reader_idx);
+
+    /**
+     * We update block metadata in device to reflect the invalidation
+    */
     block ->header.state = BLDMS_BLOCK_STATE_INVALID;
     res = bldms_blocks_move_block(b_layer, &b_layer->free_blocks, &b_layer->used_blocks,
         block);

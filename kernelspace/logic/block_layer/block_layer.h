@@ -6,6 +6,8 @@
 #include <linux/fs.h>
 #include <linux/atomic.h>
 #include <linux/srcu.h>
+#include <linux/log2.h>
+#include "srcu_list.h"
 
 #include "block.h"
 
@@ -47,7 +49,15 @@ struct bldms_block_layer {
      * Saves b_layer state to disk.
      * Implementation is chosen by the fs owning the block layer.
     */
-    int(*save_state)(struct bldms_block_layer *b_layer); 
+    int(*save_state)(struct bldms_block_layer *b_layer);
+    /**
+     * Keeps states of bldms_read() opened sessions. Only changes to
+     * list frame are RCU protected, not the read states themselves.
+     * This is because there are no read-only roles among invalidate and
+     * vfs read ops, so each one of them would take the list write lock to
+     * perform it's job, vanishing the RCU advantages.
+    */
+    struct srcu_list read_states;
 };
 
 int bldms_block_layer_init(struct bldms_block_layer *b_layer,
