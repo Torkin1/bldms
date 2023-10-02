@@ -111,13 +111,6 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
          * 
          * Stream cursor is updated in such a way that it is always pointing the end
          * of data of a block.
-         * 
-         * TODO: Block data size is written in header block on disk, so we need to
-         *  read it
-         * before doing stream cursor updates. This can slow down perfomances.
-         * Enforcing to read entire block capacity may improve perfomances, since
-         * we can skip entire blocks in used list while knowing how much we must
-         * progress the stream cursor to keep it consistent.
         */
         stream_cursor_old = stream_cursor;
         stream_cursor += b->header.data_size;
@@ -196,8 +189,7 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
     }
     
     /**
-     * We waited the very last moment to update the read state to keep it consistent
-     * in case of errors
+    * Publish updates to read state
     */
     *off += read;
     read_state->stream_cursor = stream_cursor;
