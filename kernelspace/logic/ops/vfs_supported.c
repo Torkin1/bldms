@@ -84,9 +84,8 @@ ssize_t bldms_read(struct bldms_block_layer *b_layer, char *buf, size_t len,
         /**
          * Consider the following race condition:
          * read():                      invalidate_data():
-         *                              invalidate_block()                 
-         * read_block()
-         * load_next_block() --> will fetch a block from the free or the used list?
+         *  read_block()                 invalidate_block()                 
+         *  load_next_block() --> will fetch a block from the free or the used list?
          * 
          * RCU allows a writer to modify block state while a reader is traversing it.
          * A writer will wait a grace period to expire before modifying next and prev
