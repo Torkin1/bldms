@@ -106,12 +106,6 @@ __SYSCALL_DEFINEx(3, _get_data, int, offset, __user char *, destination, size_t,
     }
     
     // copy data from block to destination
-    res = bldms_move_block(b_layer, block, READ);
-    if (res < 0){
-        pr_err("%s: failed to read block %d from device\n", __func__, offset);
-        data_copied = -1;
-        goto get_data_exit;
-    }
     data_copied = bldms_block_memcpy(block, buffer, size,
      BLDMS_BLOCK_MEMCPY_FROM_BLOCK);
     if (copy_to_user(destination, buffer, data_copied)){
