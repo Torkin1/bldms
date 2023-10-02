@@ -242,6 +242,15 @@ struct bldms_block *block){
         }
         bldms_block_free(from_block_next);
     }
+
+    // we update the donating list head if the moving block is the first of its list
+    if(from->first_bi == block->header.index){
+        from->first_bi = block_old_next_i;
+    }
+    if(from->last_bi == block->header.index){
+        from->last_bi = block_old_prev_i;
+    }
+
     /**
      * Give remaining readers time to exit from block to move.
      * NOTE: we cannot use a srcu callback since it is stated that it cannot block, but
@@ -281,14 +290,6 @@ struct bldms_block *block){
         pr_err("%s: failed to write block to move %d\n", __func__,
         block->header.index);
         return -1;
-    }
-
-    // we update the donating list head if the moving block is the first of its list
-    if(from->first_bi == block->header.index){
-        from->first_bi = block_old_next_i;
-    }
-    if(from->last_bi == block->header.index){
-        from->last_bi = block_old_prev_i;
     }
 
     // we update the receiving list head and last block, if there is one
