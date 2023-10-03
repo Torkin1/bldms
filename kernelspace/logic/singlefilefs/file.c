@@ -13,7 +13,7 @@
 #include "block_layer/block_layer.h"
 #include "ops/vfs_supported.h"
 
-ssize_t onefilefs_write(struct file *f, const char __user *, size_t, loff_t *){
+ssize_t onefilefs_write(struct file *f, const char __user *u, size_t s, loff_t *o){
 
     // unsupported
     return -ENOTSUPP;
